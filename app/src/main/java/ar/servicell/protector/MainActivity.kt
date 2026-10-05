@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     private fun pasoActivacion() {
         val col = pantalla()
         val codigo = Licencia.codigoCelular(this)
+        col.logo()
         col.titulo("🔐 Activar la app")
         col.texto("Esta app es de ${Config.NEGOCIO} y funciona solo en este celular.")
         col.texto("Código de este celular:", negrita = true)
@@ -64,6 +65,7 @@ class MainActivity : Activity() {
     // ───────────── 2) NOMBRE Y PRIVACIDAD ─────────────
     private fun pasoNombre() {
         val col = pantalla()
+        col.logo()
         col.titulo("👋 ¡Hola!")
         col.texto("¿Cómo te llamás?")
         val campo = campoTexto(col, "Tu nombre", mayusculas = false)
@@ -86,6 +88,7 @@ class MainActivity : Activity() {
     // ───────────── 3) PERMISOS ─────────────
     private fun pasoPermisos() {
         val col = pantalla()
+        col.logo()
         col.titulo("⚙️ Último paso")
         col.texto("Hay que dar 2 permisos para que la app pueda ayudarte. Se hace una sola vez.")
         mostrarPermisos(col)
@@ -119,6 +122,7 @@ class MainActivity : Activity() {
     private fun inicio() {
         ProteccionService.iniciar(this)
         val col = pantalla()
+        col.logo()
         col.titulo("Hola, ${Prefs.nombre(this)} 👋", 32f)
         col.texto("Tu celular está cuidado por ${Config.NEGOCIO} 🛡️", tam = 19f, color = Colores.GRIS)
 

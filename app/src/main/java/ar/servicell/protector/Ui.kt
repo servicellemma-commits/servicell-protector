@@ -26,7 +26,7 @@ import java.util.Locale
 object Colores {
     val ROJO = Color.parseColor("#C62828")
     val VERDE = Color.parseColor("#2E7D32")
-    val AZUL = Color.parseColor("#1565C0")
+    val AZUL = Color.parseColor("#1A1A1A")   // negro de la marca Servicell-Emma
     val GRIS = Color.parseColor("#546E7A")
     val AMARILLO = Color.parseColor("#F9A825")
     val FONDO = Color.parseColor("#F5F7FA")
@@ -45,6 +45,19 @@ fun Activity.pantalla(): LinearLayout {
     scroll.addView(col)
     setContentView(scroll)
     return col
+}
+
+/** Logo de Servicell-Emma arriba de la pantalla. */
+fun LinearLayout.logo() {
+    val iv = android.widget.ImageView(context).apply {
+        setImageResource(R.drawable.logo)
+        adjustViewBounds = true
+        contentDescription = Config.NEGOCIO
+    }
+    addView(iv, LinearLayout.LayoutParams(-1, -2).apply {
+        bottomMargin = context.dp(22)
+        leftMargin = context.dp(8); rightMargin = context.dp(8)
+    })
 }
 
 fun LinearLayout.titulo(texto: String, tam: Float = 30f): TextView = texto(texto, tam, negrita = true)
