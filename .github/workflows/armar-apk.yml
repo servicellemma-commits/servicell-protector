@@ -1,0 +1,59 @@
+name: Armar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  armar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Preparar datos secretos
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          CLAVE_SECRETA: ${{ secrets.CLAVE_SECRETA }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$CLAVE_SECRETA" ]; then
+            echo "::error::Faltan los secretos KEYSTORE_BASE64, KEYSTORE_PASSWORD o CLAVE_SECRETA"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > app/servicell.jks
+
+      - name: Compilar la app
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          CLAVE_SECRETA: ${{ secrets.CLAVE_SECRETA }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Renombrar APK
+        run: cp app/build/outputs/apk/release/app-release.apk ServicellProtector.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ServicellProtector
+          path: ServicellProtector.apk
+
+      - name: Publicar la ultima version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ultima --yes --cleanup-tag || true
+          gh release create ultima ServicellProtector.apk \
+            --title "Ultima version" \
+            --notes "APK listo para instalar en el celular del cliente."
