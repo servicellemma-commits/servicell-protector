@@ -23,6 +23,9 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Revisar que el codigo compile
+        run: gradle compileReleaseKotlin --no-daemon
+
       - name: Preparar datos secretos
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

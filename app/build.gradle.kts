@@ -39,9 +39,6 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("servicell")
         }
-        debug {
-            signingConfig = signingConfigs.getByName("servicell")
-        }
     }
 
     compileOptions {
