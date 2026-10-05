@@ -140,6 +140,9 @@ class MainActivity : Activity() {
             startActivity(Intent(this, EmergenciaActivity::class.java).putExtra(EmergenciaActivity.EXTRA_COMPLETO, true))
         }
         col.boton("💬 Pedir ayuda a ${Config.NEGOCIO}", Colores.VERDE) { Ayuda.pedirAyuda(this) }
+        col.boton("🔐 Seguridad de mis cuentas", Colores.AZUL) {
+            startActivity(Intent(this, SeguridadActivity::class.java))
+        }
         col.boton("😵 No puedo usar el celular", Colores.GRIS) { Ayuda.mostrarModoSeguro(this) }
         col.boton("🔒 Privacidad", Colores.GRIS) { Ayuda.mostrarPrivacidad(this) }
 
