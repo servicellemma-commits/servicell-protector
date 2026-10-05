@@ -58,7 +58,8 @@ class EmergenciaActivity : Activity() {
 
         Thread {
             val lista = Analizador.analizar(this)
-            val sigueInstalada = borrada != null && Analizador.evaluarUna(this, borrada) != null
+            val sigueInstalada = borrada != null && Analizador.estaInstalada(this, borrada)
+            if (borrada != null && !sigueInstalada) Prefs.registrarBorrada(this, borrada)
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (borrada != null && !sigueInstalada) {
@@ -180,6 +181,7 @@ class EmergenciaActivity : Activity() {
     private fun borrar(app: AppRevisada) {
         voz.callar()
         paqueteEnBorrado = app.paquete
+        Prefs.marcarParaBorrar(this, app.paquete, app.nombre)
         Ayuda.desinstalar(this, app.paquete)
     }
 }

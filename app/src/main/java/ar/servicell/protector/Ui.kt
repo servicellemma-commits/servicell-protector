@@ -174,6 +174,26 @@ object Ayuda {
             .show()
     }
 
+    /** Le manda a Servicell el código del celular para activarlo a distancia. */
+    fun mandarCodigo(a: Activity) {
+        if (Config.WHATSAPP.isBlank()) {
+            Toast.makeText(a, "Falta cargar el WhatsApp del local", Toast.LENGTH_LONG).show()
+            return
+        }
+        val msg = "Hola, quiero activar Servicell Protector.\n" +
+            "Código del celular: ${Licencia.codigoCelular(a)}\n" +
+            "Celular: ${datosCelular()}"
+        AlertDialog.Builder(a)
+            .setTitle("Se va a mandar este mensaje:")
+            .setMessage(msg)
+            .setPositiveButton("Mandar por WhatsApp") { _, _ ->
+                val url = "https://wa.me/${Config.WHATSAPP}?text=" + Uri.encode(msg)
+                abrir(a, Intent(Intent.ACTION_VIEW, Uri.parse(url)), "No se encontró WhatsApp")
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     fun mostrarPrivacidad(a: Activity, alAceptar: (() -> Unit)? = null) {
         val d = AlertDialog.Builder(a)
             .setTitle("🔒 Tu privacidad")

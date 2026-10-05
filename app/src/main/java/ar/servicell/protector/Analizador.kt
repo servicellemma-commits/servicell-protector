@@ -89,6 +89,8 @@ object Analizador {
         return evaluar(c, pi, emptySet(), administradores(c), conAccesibilidad(c))
     }
 
+    fun estaInstalada(c: Context, paquete: String) = infoPaquete(c.packageManager, paquete) != null
+
     fun vinoDeTienda(c: Context, paquete: String) = instalador(c.packageManager, paquete) in TIENDAS
 
     @Suppress("DEPRECATION")

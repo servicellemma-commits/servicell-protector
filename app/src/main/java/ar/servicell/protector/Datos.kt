@@ -26,6 +26,35 @@ object Prefs {
     fun ultimaRevision(c: Context): Long = p(c).getLong("ultima_revision", 0L)
     fun setUltimaRevision(c: Context, v: Long) = p(c).edit().putLong("ultima_revision", v).apply()
 
+    /** Apps que el cliente quiso borrar (paquete|nombre), para anotarlas cuando se borren. */
+    fun marcarParaBorrar(c: Context, paquete: String, nombre: String) {
+        val limpias = (p(c).getStringSet("para_borrar", emptySet()) ?: emptySet())
+            .filter { !it.startsWith("$paquete|") }.toSet()
+        p(c).edit().putStringSet("para_borrar", limpias + "$paquete|${nombre.replace("|", " ")}").apply()
+    }
+
+    /** Si la app estaba marcada para borrar, la pasa al historial. */
+    fun registrarBorrada(c: Context, paquete: String) {
+        val pendientes = p(c).getStringSet("para_borrar", emptySet()) ?: emptySet()
+        val item = pendientes.firstOrNull { it.startsWith("$paquete|") } ?: return
+        val nombre = item.substringAfter("|")
+        val linea = "${System.currentTimeMillis()}|$nombre|$paquete"
+        val nuevo = (listOf(linea) + historialCrudo(c)).take(100)
+        p(c).edit()
+            .putStringSet("para_borrar", pendientes - item)
+            .putString("historial", nuevo.joinToString("\n"))
+            .apply()
+    }
+
+    private fun historialCrudo(c: Context): List<String> =
+        (p(c).getString("historial", "") ?: "").split("\n").filter { it.isNotBlank() }
+
+    /** Historial de apps borradas, la más nueva primero: (fecha, nombre, paquete). */
+    fun historial(c: Context): List<Triple<Long, String, String>> = historialCrudo(c).mapNotNull {
+        val partes = it.split("|")
+        if (partes.size < 3) null else Triple(partes[0].toLongOrNull() ?: 0L, partes[1], partes[2])
+    }
+
     /** Apps que el cliente dijo "es mía, confío". */
     fun confiables(c: Context): Set<String> =
         p(c).getStringSet("confiables", emptySet())?.toSet() ?: emptySet()

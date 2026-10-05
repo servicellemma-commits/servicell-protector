@@ -24,7 +24,12 @@ class ProteccionService : Service() {
 
     private val receptor = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
-            Alertas.revisarAppsNuevas(c)
+            if (i.action == Intent.ACTION_PACKAGE_REMOVED) {
+                val p = i.data?.schemeSpecificPart ?: return
+                if (!i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) Prefs.registrarBorrada(c, p)
+            } else {
+                Alertas.revisarAppsNuevas(c)
+            }
         }
     }
 
@@ -37,7 +42,10 @@ class ProteccionService : Service() {
         } else {
             startForeground(Alertas.ID_BOTON, n)
         }
-        val filtro = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply { addDataScheme("package") }
+        val filtro = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receptor, filtro, Context.RECEIVER_EXPORTED)
         else registerReceiver(receptor, filtro)
 
@@ -128,6 +136,7 @@ object Alertas {
         val app = Analizador.evaluarUna(c, paquete) ?: return  // null = app conocida y confiable
         if (desdeTienda && app.puntos < PUNTOS_MINIMOS_TIENDA) return
         val id = paquete.hashCode()
+        Prefs.marcarParaBorrar(c, paquete, app.nombre)  // si la borra desde el aviso, queda en el historial
         val motivo = if (desdeTienda) "Viene de la Play Store, pero tiene señales sospechosas."
                      else "No viene de la Play Store."
         val detalle = app.motivos.filter { !it.startsWith("Se instaló") }.take(3).joinToString("\n") { "• $it" }
