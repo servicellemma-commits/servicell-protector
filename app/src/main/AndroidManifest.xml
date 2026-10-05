@@ -69,5 +69,9 @@
         <receiver
             android:name=".ConfiarReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".RevisionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

@@ -1,5 +1,6 @@
 package ar.servicell.protector
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -42,6 +43,10 @@ class ProteccionService : Service() {
 
         // Por si se instaló algo mientras el servicio estaba apagado
         Alertas.revisarAppsNuevas(this)
+
+        // Revisión automática una vez por semana
+        RevisionSemanal.programar(this)
+        RevisionSemanal.revisarSiToca(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,14 +116,21 @@ object Alertas {
         if (anteriores == null) return  // primera vez: solo se saca la foto
         for (p in actuales - anteriores) {
             if (p == c.packageName || p in Prefs.confiables(c)) continue
-            if (Analizador.vinoDeTienda(c, p) && p !in Config.VIRUS_CONOCIDOS) continue
-            avisarAppNueva(c, p)
+            avisarAppNueva(c, p, Analizador.vinoDeTienda(c, p))
         }
     }
 
-    private fun avisarAppNueva(c: Context, paquete: String) {
-        val app = Analizador.evaluarUna(c, paquete) ?: return
+    // Las apps de la Play Store solo avisan si juntan varias señales sospechosas
+    // (ej: nombre de "limpiador" + se pone encima de otras apps + arranca sola).
+    private const val PUNTOS_MINIMOS_TIENDA = 6
+
+    private fun avisarAppNueva(c: Context, paquete: String, desdeTienda: Boolean) {
+        val app = Analizador.evaluarUna(c, paquete) ?: return  // null = app conocida y confiable
+        if (desdeTienda && app.puntos < PUNTOS_MINIMOS_TIENDA) return
         val id = paquete.hashCode()
+        val motivo = if (desdeTienda) "Viene de la Play Store, pero tiene señales sospechosas."
+                     else "No viene de la Play Store."
+        val detalle = app.motivos.filter { !it.startsWith("Se instaló") }.take(3).joinToString("\n") { "• $it" }
 
         val borrar = PendingIntent.getActivity(
             c, id,
@@ -135,9 +147,9 @@ object Alertas {
         val n = Notification.Builder(c, CANAL_ALERTA)
             .setSmallIcon(R.drawable.ic_notif)
             .setContentTitle("⚠️ Se instaló «${app.nombre}»")
-            .setContentText("¿La instalaste vos? No viene de la Play Store.")
+            .setContentText("¿La instalaste vos? $motivo")
             .setStyle(Notification.BigTextStyle().bigText(
-                "¿La instalaste vos?\nNo viene de la Play Store. Si no la conocés, borrala."
+                "¿La instalaste vos?\n$motivo\n$detalle\nSi no la conocés, borrala."
             ))
             .setColor(Colores.ROJO)
             .setAutoCancel(true)
@@ -165,5 +177,80 @@ class ConfiarReceiver : BroadcastReceiver() {
 class ArranqueReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         ProteccionService.iniciar(c)
+        if (Licencia.estaActivada(c)) RevisionSemanal.programar(c)
+    }
+}
+
+/**
+ * 🗓️ Revisión automática semanal.
+ * Una alarma "suave" pasa una vez por día; si ya pasaron 7 días desde la
+ * última revisión, revisa el celular y avisa con una notificación.
+ */
+object RevisionSemanal {
+    private const val SEMANA = 7L * 24 * 60 * 60 * 1000
+    private const val ID_NOTIF = 2
+
+    fun programar(c: Context) {
+        val am = c.getSystemService(AlarmManager::class.java) ?: return
+        val pi = PendingIntent.getBroadcast(
+            c, 99, Intent(c, RevisionReceiver::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        am.setInexactRepeating(
+            AlarmManager.RTC,
+            System.currentTimeMillis() + AlarmManager.INTERVAL_HOUR,
+            AlarmManager.INTERVAL_DAY,
+            pi
+        )
+    }
+
+    /** Revisa solo si pasó una semana. La primera vez solo empieza a contar. */
+    fun revisarSiToca(c: Context, alTerminar: (() -> Unit)? = null) {
+        val ultima = Prefs.ultimaRevision(c)
+        val ahora = System.currentTimeMillis()
+        if (ultima == 0L) { Prefs.setUltimaRevision(c, ahora); alTerminar?.invoke(); return }
+        if (ahora - ultima < SEMANA) { alTerminar?.invoke(); return }
+        Prefs.setUltimaRevision(c, ahora)
+        Thread {
+            try {
+                val lista = Analizador.analizar(c)
+                avisar(c, lista.count { it.nivel != Nivel.TRANQUILA })
+            } catch (e: Exception) { }
+            alTerminar?.invoke()
+        }.start()
+    }
+
+    private fun avisar(c: Context, sospechosas: Int) {
+        val intent = Intent(c, EmergenciaActivity::class.java)
+            .putExtra(EmergenciaActivity.EXTRA_COMPLETO, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val abrir = PendingIntent.getActivity(
+            c, 98, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val (titulo, texto) = if (sospechosas == 0)
+            "✅ Revisión semanal: todo bien" to "No encontré apps sospechosas en tu celular."
+        else
+            "🔍 Revisión semanal: encontré algo raro" to
+                "Hay $sospechosas ${if (sospechosas == 1) "app" else "apps"} para revisar. Tocá acá."
+        val n = Notification.Builder(c, if (sospechosas == 0) "boton" else "alerta")
+            .setSmallIcon(R.drawable.ic_notif)
+            .setContentTitle(titulo)
+            .setContentText(texto)
+            .setContentIntent(abrir)
+            .setAutoCancel(true)
+            .setColor(if (sospechosas == 0) Colores.VERDE else Colores.ROJO)
+            .build()
+        try {
+            c.getSystemService(NotificationManager::class.java).notify(ID_NOTIF, n)
+        } catch (e: SecurityException) { }
+    }
+}
+
+/** Lo despierta la alarma diaria. */
+class RevisionReceiver : BroadcastReceiver() {
+    override fun onReceive(c: Context, i: Intent) {
+        if (!Licencia.estaActivada(c)) return
+        val pendiente = goAsync()
+        RevisionSemanal.revisarSiToca(c.applicationContext) { pendiente.finish() }
     }
 }

@@ -23,6 +23,9 @@ object Prefs {
     fun permisosVistos(c: Context) = p(c).getBoolean("permisos_vistos", false)
     fun setPermisosVistos(c: Context) = p(c).edit().putBoolean("permisos_vistos", true).apply()
 
+    fun ultimaRevision(c: Context): Long = p(c).getLong("ultima_revision", 0L)
+    fun setUltimaRevision(c: Context, v: Long) = p(c).edit().putLong("ultima_revision", v).apply()
+
     /** Apps que el cliente dijo "es mía, confío". */
     fun confiables(c: Context): Set<String> =
         p(c).getStringSet("confiables", emptySet())?.toSet() ?: emptySet()
