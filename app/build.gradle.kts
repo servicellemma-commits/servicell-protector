@@ -5,8 +5,8 @@ plugins {
 
 // 🔑 Los datos secretos NO están en el código: GitHub los pone al armar el APK
 // (Settings → Secrets and variables → Actions).
-val claveSecreta: String = System.getenv("CLAVE_SECRETA") ?: ""
-val clavesFirma: String = System.getenv("KEYSTORE_PASSWORD") ?: ""
+val claveSecreta: String = (System.getenv("CLAVE_SECRETA") ?: "").trim()
+val clavesFirma: String = (System.getenv("KEYSTORE_PASSWORD") ?: "").trim()
 
 android {
     namespace = "ar.servicell.protector"

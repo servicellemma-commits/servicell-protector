@@ -32,11 +32,16 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           CLAVE_SECRETA: ${{ secrets.CLAVE_SECRETA }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$CLAVE_SECRETA" ]; then
-            echo "::error::Faltan los secretos KEYSTORE_BASE64, KEYSTORE_PASSWORD o CLAVE_SECRETA"
-            exit 1
+          for n in KEYSTORE_BASE64 KEYSTORE_PASSWORD CLAVE_SECRETA; do
+            if [ -z "${!n}" ]; then echo "::error::Falta el secreto $n"; exit 1; fi
+          done
+          # Se quitan espacios o saltos de linea que se cuelan al pegar desde el celular
+          if ! printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > app/servicell.jks 2>/dev/null; then
+            echo "::error::KEYSTORE_BASE64 esta mal pegado (no se pudo leer)"; exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > app/servicell.jks
+          if ! keytool -list -keystore app/servicell.jks -storepass "$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d ' \r\n\t')" > /dev/null 2>&1; then
+            echo "::error::KEYSTORE_PASSWORD no coincide con KEYSTORE_BASE64 (o la firma esta incompleta)"; exit 1
+          fi
 
       - name: Compilar la app
         env:
