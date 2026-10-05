@@ -10,7 +10,7 @@ object Config {
     const val NEGOCIO = "Servicell-Emma"
 
     /** WhatsApp del local, con código de país y sin "+" ni espacios. Ej: 5491123456789 */
-    const val WHATSAPP = ""
+    const val WHATSAPP = "5492604020907"
 
     /**
      * 🔑 LLAVE SECRETA para los códigos de activación.
