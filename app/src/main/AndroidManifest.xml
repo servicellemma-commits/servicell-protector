@@ -83,6 +83,46 @@
                 android:value="Boton de emergencia y aviso de apps instaladas fuera de la tienda" />
         </service>
 
+        <!-- ⚡ Atajo de emergencia: solo abre el menú de apagado -->
+        <service
+            android:name=".AccesoRapidoService"
+            android:exported="true"
+            android:label="Servicell Protector"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accesibilidad" />
+        </service>
+
+        <!-- 🔲 Botón "Emergencia" en los accesos rápidos -->
+        <service
+            android:name=".EmergenciaTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notif"
+            android:label="@string/tile_emergencia"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".ApagadoReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".ReponerBotonReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".AtajoActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
+
         <receiver
             android:name=".ArranqueReceiver"
             android:exported="true">

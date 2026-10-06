@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Servicell Protector</string>
+    <string name="accesibilidad_resumen">Atajo de emergencia: abre el menú de apagado</string>
+    <string name="accesibilidad_descripcion">Atajo de emergencia de Servicell-Emma. Al mantener apretados los dos botones de volumen, abre el menú de apagado para que puedas entrar al modo seguro si una publicidad no te deja usar el celular. NO lee ni toca nada de tu pantalla: solo abre ese menú.</string>
+    <string name="tile_emergencia">Emergencia</string>
 </resources>

@@ -142,6 +142,7 @@ class MainActivity : Activity() {
             Triple("🔐", "Seguridad de cuentas") { startActivity(Intent(this, SeguridadActivity::class.java)) },
             Triple("📋", "Apps que borré") { startActivity(Intent(this, HistorialActivity::class.java)) },
             Triple("😵", "No puedo usar el celular") { Ayuda.mostrarModoSeguro(this) },
+            Triple("⚡", "Atajos de emergencia") { startActivity(Intent(this, AtajoActivity::class.java)) },
             Triple("📸", "Seguinos en Instagram") { Ayuda.abrirInstagram(this) },
             Triple("🔒", "Privacidad") { Ayuda.mostrarPrivacidad(this) },
         ))

@@ -101,18 +101,37 @@ object Alertas {
     }
 
     fun notificacionBoton(c: Context): Notification {
-        val abrir = PendingIntent.getActivity(
-            c, 0,
-            Intent(c, EmergenciaActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        fun actividad(codigo: Int, i: Intent) =
+            PendingIntent.getActivity(c, codigo, i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), flags)
+
+        val buscar = actividad(0, Intent(c, EmergenciaActivity::class.java))
+        val modoSeguro = actividad(1, Intent(c, ModoSeguroActivity::class.java))
+        // Con el atajo activo, abre el menú de apagado directo; si no, lleva a configurarlo
+        val apagado = if (AccesoRapidoService.estaActivo(c))
+            PendingIntent.getBroadcast(c, 2, Intent(c, ApagadoReceiver::class.java), flags)
+        else actividad(3, Intent(c, AtajoActivity::class.java))
+        // Si la deslizan para borrarla, vuelve a aparecer
+        val reponer = PendingIntent.getBroadcast(c, 4, Intent(c, ReponerBotonReceiver::class.java), flags)
+        val icono = Icon.createWithResource(c, R.drawable.ic_notif)
+
         return Notification.Builder(c, CANAL_BOTON)
             .setSmallIcon(R.drawable.ic_notif)
             .setContentTitle("🚨 ¿Te molesta una publicidad?")
             .setContentText("Tocá acá y te ayudo a encontrarla")
-            .setContentIntent(abrir)
+            .setStyle(Notification.BigTextStyle().bigText(
+                "Tocá acá y te ayudo a encontrar la app culpable.\n" +
+                    "Si la publicidad no te deja hacer nada, tocá «Modo seguro»."
+            ))
+            .setContentIntent(buscar)
+            .setDeleteIntent(reponer)
+            .addAction(Notification.Action.Builder(icono, "🔍 Buscar culpable", buscar).build())
+            .addAction(Notification.Action.Builder(icono, "😵 Modo seguro", modoSeguro).build())
+            .addAction(Notification.Action.Builder(icono, "⏻ Menú apagar", apagado).build())
             .setOngoing(true)
+            .setShowWhen(false)
             .setColor(Colores.ROJO)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .build()
     }
 

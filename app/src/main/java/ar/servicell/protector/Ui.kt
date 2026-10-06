@@ -334,6 +334,8 @@ object Ayuda {
 
         • La app no tiene permiso de Internet: no puede mandar nada a ningún lado.
 
+        • Si activás el «atajo de emergencia», el permiso de accesibilidad se usa SOLO para abrir el menú de apagado. La app no lee ni toca nada de tu pantalla.
+
         • Solo si vos tocás «Pedir ayuda», se abre WhatsApp con un mensaje que podés leer antes de mandarlo.
     """.trimIndent()
 
