@@ -1,0 +1,63 @@
+name: Armar programa Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pc/**'
+      - '.github/workflows/armar-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  armar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar PyInstaller
+        run: pip install pyinstaller
+
+      - name: Bajar ADB (herramienta oficial de Google)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile pt.zip
+          Expand-Archive pt.zip -DestinationPath pc
+
+      - name: Bajar la ultima app Android (para instalarla al cliente)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          try {
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/ultima/ServicellProtector.apk" -OutFile pc/ServicellProtector.apk
+          } catch { Write-Host "Todavia no hay APK publicado; el programa pedira elegirlo a mano." }
+
+      - name: Armar el .exe
+        working-directory: pc
+        shell: pwsh
+        run: |
+          $apk = ""
+          if (Test-Path "ServicellProtector.apk") { $apk = "--add-data `"ServicellProtector.apk;.`"" }
+          $cmd = "pyinstaller --noconfirm --onefile --windowed --name ServicellProtectorPC " +
+                 "--add-data `"platform-tools;platform-tools`" $apk servicell_pc.py"
+          Write-Host $cmd
+          Invoke-Expression $cmd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ServicellProtectorPC
+          path: pc/dist/ServicellProtectorPC.exe
+
+      - name: Publicar en Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete pc --yes --cleanup-tag 2>$null
+          gh release create pc pc/dist/ServicellProtectorPC.exe --title "Programa para Windows" --notes "Herramienta del tecnico: limpia el celular por cable e instala la app."
