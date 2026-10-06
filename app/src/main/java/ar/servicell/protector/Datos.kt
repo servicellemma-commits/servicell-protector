@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
 import java.security.MessageDigest
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -108,12 +110,88 @@ object Licencia {
         return conGuion(base32(h.copyOf(5)))
     }
 
-    fun esValido(c: Context, ingresado: String): Boolean {
-        val esperado = normalizar(codigoActivacionPara(codigoCelular(c)))
-        return normalizar(ingresado) == esperado
+    // ───────────── Códigos con vencimiento ─────────────
+    // Formato: DDDD-XXXX-XXXX  →  DDDD = día de vencimiento, el resto = firma.
+    // Los códigos viejos de 8 letras (XXXX-XXXX) siguen siendo permanentes.
+
+    /** Días de gracia después de vencer, antes de bloquear. */
+    const val DIAS_GRACIA = 3
+    private val EPOCA: LocalDate = LocalDate.of(2026, 1, 1)
+
+    sealed class Estado {
+        object SinActivar : Estado()
+        object Permanente : Estado()
+        /** [dias] = días que faltan (negativo si ya venció). */
+        data class Hasta(val vence: LocalDate, val dias: Int) : Estado()
     }
 
-    fun estaActivada(c: Context) = esValido(c, Prefs.activacion(c))
+    fun codigoConVencimiento(codigoCelular: String, vence: LocalDate): String {
+        val dd = diasACodigo(ChronoUnit.DAYS.between(EPOCA, vence).toInt())
+        val m = firma(normalizar(codigoCelular) + ":" + dd)
+        return "$dd-${m.substring(0, 4)}-${m.substring(4, 8)}"
+    }
+
+    /** Qué tipo de código es [ingresado] para este celular (sin mirar la fecha de hoy). */
+    private fun leer(c: Context, ingresado: String): Estado {
+        val n = normalizar(ingresado)
+        val cel = codigoCelular(c)
+        return when (n.length) {
+            8 -> if (n == normalizar(codigoActivacionPara(cel))) Estado.Permanente else Estado.SinActivar
+            12 -> {
+                val dd = n.substring(0, 4)
+                val dias = codigoADias(dd) ?: return Estado.SinActivar
+                if (n.substring(4) != firma(normalizar(cel) + ":" + dd)) return Estado.SinActivar
+                val vence = EPOCA.plusDays(dias.toLong())
+                Estado.Hasta(vence, ChronoUnit.DAYS.between(hoy(c), vence).toInt())
+            }
+            else -> Estado.SinActivar
+        }
+    }
+
+    fun estado(c: Context): Estado = leer(c, Prefs.activacion(c))
+
+    /** Activada = permanente, o con fecha y todavía dentro del plazo (+ días de gracia). */
+    fun estaActivada(c: Context): Boolean = when (val e = estado(c)) {
+        is Estado.Permanente -> true
+        is Estado.Hasta -> e.dias >= -DIAS_GRACIA
+        else -> false
+    }
+
+    /** null si el código sirve; si no, el motivo para mostrarle al cliente. */
+    fun problemaCon(c: Context, ingresado: String): String? = when (val e = leer(c, ingresado)) {
+        is Estado.Permanente -> null
+        is Estado.Hasta -> if (e.dias < 0) "Ese código ya venció. Pedí uno nuevo a ${Config.NEGOCIO}." else null
+        else -> "El código no es correcto para este celular"
+    }
+
+    fun esValido(c: Context, ingresado: String) = problemaCon(c, ingresado) == null
+
+    /**
+     * Fecha de hoy, protegida contra el truco de atrasar el reloj:
+     * nunca vuelve a un día anterior al último que ya vio.
+     */
+    fun hoy(c: Context): LocalDate {
+        val real = LocalDate.now().toEpochDay()
+        val p = c.getSharedPreferences("servicell", Context.MODE_PRIVATE)
+        val visto = p.getLong("max_dia", 0L)
+        if (real > visto) p.edit().putLong("max_dia", real).apply()
+        return LocalDate.ofEpochDay(maxOf(real, visto))
+    }
+
+    private fun firma(texto: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(Config.CLAVE_SECRETA.toByteArray(), "HmacSHA256"))
+        return base32(mac.doFinal(texto.toByteArray()).copyOf(5))
+    }
+
+    private fun diasACodigo(d: Int): String =
+        (3 downTo 0).map { ALFABETO[(d shr (5 * it)) and 31] }.joinToString("")
+
+    private fun codigoADias(s: String): Int? {
+        var d = 0
+        for (ch in s) { val v = ALFABETO.indexOf(ch); if (v < 0) return null; d = (d shl 5) or v }
+        return d
+    }
 
     fun normalizar(s: String): String = s.uppercase()
         .replace('O', '0').replace('I', '1').replace('L', '1')

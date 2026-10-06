@@ -122,7 +122,7 @@ fun iconoWhatsApp(c: Context): android.graphics.drawable.Drawable? =
     }
 
 /** 🖤 Encabezado oscuro con el logo, el saludo y el estado de la protección. */
-fun LinearLayout.encabezado(saludo: String, protegido: Boolean) {
+fun LinearLayout.encabezado(saludo: String, protegido: Boolean, detalle: String = "") {
     val c = context
     val caja = LinearLayout(c).apply {
         orientation = LinearLayout.VERTICAL
@@ -139,7 +139,7 @@ fun LinearLayout.encabezado(saludo: String, protegido: Boolean) {
         setTypeface(typeface, Typeface.BOLD)
     })
     val pildora = TextView(c).apply {
-        text = if (protegido) "●  Protección activa" else "●  Falta un permiso"
+        text = (if (protegido) "●  Protección activa" else "●  Falta un permiso") + detalle
         textSize = 16f
         setTextColor(if (protegido) Color.parseColor("#7CE29A") else Color.parseColor("#FFD54F"))
         setPadding(c.dp(14), c.dp(6), c.dp(14), c.dp(6))
@@ -284,12 +284,13 @@ object Ayuda {
     }
 
     /** Le manda a Servicell el código del celular para activarlo a distancia. */
-    fun mandarCodigo(a: Activity) {
+    fun mandarCodigo(a: Activity, renovar: Boolean = false) {
         if (Config.WHATSAPP.isBlank()) {
             Toast.makeText(a, "Falta cargar el WhatsApp del local", Toast.LENGTH_LONG).show()
             return
         }
-        val msg = "Hola, quiero activar Servicell Protector.\n" +
+        val nombre = Prefs.nombre(a).let { if (it.isBlank()) "" else ", soy $it" }
+        val msg = (if (renovar) "Hola$nombre. Quiero renovar Servicell Protector.\n" else "Hola, quiero activar Servicell Protector.\n") +
             "Código del celular: ${Licencia.codigoCelular(a)}\n" +
             "Celular: ${datosCelular()}"
         AlertDialog.Builder(a)

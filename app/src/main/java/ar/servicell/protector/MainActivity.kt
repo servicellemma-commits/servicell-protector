@@ -19,6 +19,10 @@ import android.widget.Toast
  */
 class MainActivity : Activity() {
 
+    /** true cuando el cliente tocó "Ingresar código nuevo" para renovar. */
+    private var renovando = false
+    private val formatoFecha = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
     override fun onResume() {
         super.onResume()
         mostrar()
@@ -26,7 +30,7 @@ class MainActivity : Activity() {
 
     private fun mostrar() {
         when {
-            !Licencia.estaActivada(this) -> pasoActivacion()
+            renovando || !Licencia.estaActivada(this) -> pasoActivacion()
             Prefs.nombre(this).isBlank() || !Prefs.privacidadAceptada(this) -> pasoNombre()
             !Prefs.permisosVistos(this) -> pasoPermisos()
             else -> inicio()
@@ -38,8 +42,23 @@ class MainActivity : Activity() {
         val col = pantalla()
         val codigo = Licencia.codigoCelular(this)
         col.logo()
-        col.titulo("🔐 Activar la app")
-        col.texto("Esta app es de ${Config.NEGOCIO} y funciona solo en este celular.")
+        val estado = Licencia.estado(this)
+        val vencida = estado is Licencia.Estado.Hasta && !Licencia.estaActivada(this)
+        when {
+            vencida -> {
+                col.titulo("⏰ Tu protección venció")
+                col.texto("Venció el ${(estado as Licencia.Estado.Hasta).vence.format(formatoFecha)}. " +
+                    "Renovala con ${Config.NEGOCIO} para seguir protegido.")
+            }
+            renovando -> {
+                col.titulo("🔄 Renovar la protección")
+                col.texto("Pedí tu código nuevo a ${Config.NEGOCIO} y escribilo abajo.")
+            }
+            else -> {
+                col.titulo("🔐 Activar la app")
+                col.texto("Esta app es de ${Config.NEGOCIO} y funciona solo en este celular.")
+            }
+        }
         col.texto("Código de este celular:", negrita = true)
         col.texto(codigo, tam = 40f, negrita = true, color = Colores.AZUL, centrado = true)
         col.boton("📋 Copiar código", Colores.GRIS) {
@@ -47,21 +66,30 @@ class MainActivity : Activity() {
             cm.setPrimaryClip(ClipData.newPlainText("codigo", codigo))
             Toast.makeText(this, "Código copiado", Toast.LENGTH_SHORT).show()
         }
-        col.botonWhatsApp("Mandar mi código a ${Config.NEGOCIO}") { Ayuda.mandarCodigo(this) }
+        val renovar = vencida || renovando
+        col.botonWhatsApp(if (renovar) "Renovar con ${Config.NEGOCIO}" else "Mandar mi código a ${Config.NEGOCIO}") {
+            Ayuda.mandarCodigo(this, renovar)
+        }
         col.texto("Te respondemos por WhatsApp con tu código de activación.", tam = 17f, color = Colores.GRIS)
         col.espacio()
         col.texto("Código de activación (te lo da ${Config.NEGOCIO}):", negrita = true)
-        val campo = campoTexto(col, "XXXX-XXXX", mayusculas = true)
+        val campo = campoTexto(col, "XXXX-XXXX-XXXX", mayusculas = true)
         col.boton("✅ ACTIVAR", Colores.VERDE) {
             val ingresado = campo.text.toString()
-            if (Licencia.esValido(this, ingresado)) {
+            val problema = Licencia.problemaCon(this, ingresado)
+            if (problema == null) {
                 Prefs.setActivacion(this, ingresado)
-                Toast.makeText(this, "¡Activada!", Toast.LENGTH_SHORT).show()
+                renovando = false
+                val e = Licencia.estado(this)
+                val msg = if (e is Licencia.Estado.Hasta) "¡Activada hasta el ${e.vence.format(formatoFecha)}!" else "¡Activada!"
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                ProteccionService.iniciar(this)
                 mostrar()
             } else {
-                Toast.makeText(this, "El código no es correcto para este celular", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, problema, Toast.LENGTH_LONG).show()
             }
         }
+        if (renovando) col.boton("⬅ Volver", Colores.GRIS) { renovando = false; mostrar() }
     }
 
     // ───────────── 2) NOMBRE Y PRIVACIDAD ─────────────
@@ -125,7 +153,23 @@ class MainActivity : Activity() {
         ProteccionService.iniciar(this)
         val col = pantalla()
         val protegido = tieneNotificaciones() && Analizador.tienePermisoDeUso(this)
-        col.encabezado("Hola, ${Prefs.nombre(this)} 👋", protegido)
+        val lic = Licencia.estado(this)
+        val hasta = if (lic is Licencia.Estado.Hasta) " · hasta ${lic.vence.format(formatoFecha)}" else ""
+        col.encabezado("Hola, ${Prefs.nombre(this)} 👋", protegido, hasta)
+
+        if (lic is Licencia.Estado.Hasta && lic.dias <= 7) {
+            val t = col.tarjeta(if (lic.dias < 0) Colores.ROJO else Colores.AMARILLO)
+            t.texto(
+                when {
+                    lic.dias < 0 -> "⚠️ Tu protección venció. Tenés ${Licencia.DIAS_GRACIA + lic.dias + 1} día(s) para renovarla."
+                    lic.dias == 0 -> "⏰ Tu protección vence HOY."
+                    lic.dias == 1 -> "⏰ Tu protección vence MAÑANA."
+                    else -> "⏰ Tu protección vence en ${lic.dias} días (${lic.vence.format(formatoFecha)})."
+                }, negrita = true
+            )
+            t.botonWhatsApp("Renovar con ${Config.NEGOCIO}") { Ayuda.mandarCodigo(this, true) }
+            t.boton("Ingresar código nuevo", Colores.AZUL) { renovando = true; mostrar() }
+        }
 
         if (!protegido) {
             val t = col.tarjeta(Colores.AMARILLO)

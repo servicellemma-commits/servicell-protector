@@ -52,6 +52,9 @@ class ProteccionService : Service() {
         // Por si se instaló algo mientras el servicio estaba apagado
         Alertas.revisarAppsNuevas(this)
 
+        // Aviso si la protección está por vencer
+        Vencimiento.revisar(this)
+
         // Revisión automática una vez por semana
         RevisionSemanal.programar(this)
         RevisionSemanal.revisarSiToca(this)
@@ -277,8 +280,57 @@ object RevisionSemanal {
 /** Lo despierta la alarma diaria. */
 class RevisionReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
+        Vencimiento.revisar(c)
         if (!Licencia.estaActivada(c)) return
         val pendiente = goAsync()
         RevisionSemanal.revisarSiToca(c.applicationContext) { pendiente.finish() }
+    }
+}
+
+/**
+ * ⏰ Avisos de vencimiento: 7, 3 y 1 día antes, el día que vence y durante
+ * los días de gracia (una vez por día). Cuando se termina la gracia, apaga
+ * el botón de emergencia hasta que se renueve.
+ */
+object Vencimiento {
+    private const val ID_NOTIF = 3
+
+    fun revisar(c: Context) {
+        val e = Licencia.estado(c) as? Licencia.Estado.Hasta ?: return
+        Alertas.crearCanales(c)
+        val nm = c.getSystemService(NotificationManager::class.java)
+
+        if (!Licencia.estaActivada(c)) {
+            try { c.stopService(Intent(c, ProteccionService::class.java)) } catch (ex: Exception) { }
+            nm.cancel(Alertas.ID_BOTON)
+        }
+
+        val toca = e.dias in listOf(7, 3, 1, 0) || e.dias < 0
+        val hoy = Licencia.hoy(c).toEpochDay()
+        val prefs = c.getSharedPreferences("servicell", Context.MODE_PRIVATE)
+        if (!toca || prefs.getLong("aviso_venc", -1L) == hoy) return
+        prefs.edit().putLong("aviso_venc", hoy).apply()
+
+        val (titulo, texto) = when {
+            !Licencia.estaActivada(c) -> "⚠️ Tu protección venció" to "Renovala con ${Config.NEGOCIO} para seguir protegido."
+            e.dias < 0 -> "⚠️ Tu protección venció" to "Tenés ${Licencia.DIAS_GRACIA + e.dias + 1} día(s) para renovarla."
+            e.dias == 0 -> "⏰ Tu protección vence hoy" to "Tocá acá para renovarla con ${Config.NEGOCIO}."
+            e.dias == 1 -> "⏰ Tu protección vence mañana" to "Tocá acá para renovarla con ${Config.NEGOCIO}."
+            else -> "⏰ Tu protección vence en ${e.dias} días" to "Tocá acá para renovarla con ${Config.NEGOCIO}."
+        }
+        val abrir = PendingIntent.getActivity(
+            c, 97,
+            Intent(c, PresentacionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val n = Notification.Builder(c, "alerta")
+            .setSmallIcon(R.drawable.ic_notif)
+            .setContentTitle(titulo)
+            .setContentText(texto)
+            .setContentIntent(abrir)
+            .setAutoCancel(true)
+            .setColor(Colores.AMARILLO)
+            .build()
+        try { nm.notify(ID_NOTIF, n) } catch (ex: SecurityException) { }
     }
 }
