@@ -29,7 +29,8 @@ object Colores {
     val AZUL = Color.parseColor("#1A1A1A")   // negro de la marca Servicell-Emma
     val GRIS = Color.parseColor("#546E7A")
     val AMARILLO = Color.parseColor("#F9A825")
-    val FONDO = Color.parseColor("#F5F7FA")
+    val FONDO = Color.parseColor("#F1F2F4")
+    val OSCURO = Color.parseColor("#141414")
     val TEXTO = Color.parseColor("#1A1A1A")
 }
 
@@ -90,8 +91,9 @@ fun LinearLayout.boton(texto: String, fondo: Int, colorTexto: Int = Color.WHITE,
         setTypeface(typeface, Typeface.BOLD)
         minHeight = context.dp(76)
         setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
-        background = GradientDrawable().apply { setColor(fondo); cornerRadius = context.dp(18).toFloat() }
+        background = GradientDrawable().apply { setColor(fondo); cornerRadius = context.dp(22).toFloat() }
         stateListAnimator = null
+        elevation = context.dp(3).toFloat()
         setOnClickListener { alClick() }
     }
     addView(b, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(14) })
@@ -119,15 +121,101 @@ fun iconoWhatsApp(c: Context): android.graphics.drawable.Drawable? =
         try { c.packageManager.getApplicationIcon(it) } catch (e: Exception) { null }
     }
 
+/** 🖤 Encabezado oscuro con el logo, el saludo y el estado de la protección. */
+fun LinearLayout.encabezado(saludo: String, protegido: Boolean) {
+    val c = context
+    val caja = LinearLayout(c).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(c.dp(22), c.dp(26), c.dp(22), c.dp(22))
+        background = GradientDrawable().apply { setColor(Colores.OSCURO); cornerRadius = c.dp(28).toFloat() }
+        elevation = c.dp(6).toFloat()
+    }
+    caja.addView(android.widget.ImageView(c).apply {
+        setImageResource(R.drawable.logo_blanco); adjustViewBounds = true
+        contentDescription = Config.NEGOCIO
+    }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(20) })
+    caja.addView(TextView(c).apply {
+        text = saludo; textSize = 28f; setTextColor(Color.WHITE)
+        setTypeface(typeface, Typeface.BOLD)
+    })
+    val pildora = TextView(c).apply {
+        text = if (protegido) "●  Protección activa" else "●  Falta un permiso"
+        textSize = 16f
+        setTextColor(if (protegido) Color.parseColor("#7CE29A") else Color.parseColor("#FFD54F"))
+        setPadding(c.dp(14), c.dp(6), c.dp(14), c.dp(6))
+        background = GradientDrawable().apply {
+            setColor(Color.parseColor("#262626")); cornerRadius = c.dp(40).toFloat()
+        }
+    }
+    caja.addView(pildora, LinearLayout.LayoutParams(-2, -2).apply { topMargin = c.dp(12) })
+    addView(caja, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(18) })
+}
+
+/** 🚨 Tarjeta grande roja de emergencia. */
+fun LinearLayout.tarjetaEmergencia(alClick: () -> Unit) {
+    val c = context
+    val caja = LinearLayout(c).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(c.dp(22), c.dp(22), c.dp(22), c.dp(22))
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.parseColor("#E53935"), Color.parseColor("#B71C1C"))
+        ).apply { cornerRadius = c.dp(26).toFloat() }
+        elevation = c.dp(5).toFloat()
+        isClickable = true
+        setOnClickListener { alClick() }
+    }
+    caja.addView(TextView(c).apply {
+        text = "🚨  ¿Te molesta una publicidad?"; textSize = 24f
+        setTextColor(Color.WHITE); setTypeface(typeface, Typeface.BOLD)
+    })
+    caja.addView(TextView(c).apply {
+        text = "Tocá acá y te ayudo a encontrar la app culpable."
+        textSize = 18f; setTextColor(Color.parseColor("#FFE0E0"))
+    }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = c.dp(6) })
+    addView(caja, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(18) })
+}
+
+/** 🔲 Cuadrícula de accesos rápidos (2 por fila). */
+fun LinearLayout.cuadricula(items: List<Triple<String, String, () -> Unit>>) {
+    val c = context
+    items.chunked(2).forEach { fila ->
+        val f = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+        fila.forEachIndexed { i, (emoji, texto, accion) ->
+            val t = LinearLayout(c).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                minimumHeight = c.dp(118)
+                setPadding(c.dp(10), c.dp(16), c.dp(10), c.dp(16))
+                background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = c.dp(22).toFloat() }
+                elevation = c.dp(2).toFloat()
+                isClickable = true
+                setOnClickListener { accion() }
+            }
+            t.addView(TextView(c).apply { text = emoji; textSize = 34f; gravity = Gravity.CENTER })
+            t.addView(TextView(c).apply {
+                text = texto; textSize = 17f; gravity = Gravity.CENTER
+                setTextColor(Colores.TEXTO); setTypeface(typeface, Typeface.BOLD)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = c.dp(8) })
+            f.addView(t, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (i == 0) rightMargin = c.dp(7) else leftMargin = c.dp(7)
+            })
+        }
+        if (fila.size == 1) f.addView(View(c), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = c.dp(7) })
+        addView(f, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(14) })
+    }
+}
+
 fun LinearLayout.tarjeta(colorBorde: Int): LinearLayout {
     val t = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(18), context.dp(18), context.dp(18), context.dp(8))
         background = GradientDrawable().apply {
             setColor(Color.WHITE)
-            cornerRadius = context.dp(18).toFloat()
-            setStroke(context.dp(4), colorBorde)
+            cornerRadius = context.dp(22).toFloat()
+            setStroke(context.dp(2), colorBorde)
         }
+        elevation = context.dp(2).toFloat()
     }
     addView(t, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(18) })
     return t
@@ -214,6 +302,9 @@ object Ayuda {
             .setNegativeButton("Cancelar", null)
             .show()
     }
+
+    fun abrirInstagram(a: Activity) =
+        abrir(a, Intent(Intent.ACTION_VIEW, Uri.parse(Config.INSTAGRAM)), "No se pudo abrir Instagram")
 
     fun mostrarPrivacidad(a: Activity, alAceptar: (() -> Unit)? = null) {
         val d = AlertDialog.Builder(a)

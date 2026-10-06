@@ -9,6 +9,9 @@ object Config {
     /** Nombre del negocio que ve el cliente. */
     const val NEGOCIO = "Servicell-Emma"
 
+    /** Instagram del local. */
+    const val INSTAGRAM = "https://www.instagram.com/servicell_emma"
+
     /** WhatsApp del local, con código de país y sin "+" ni espacios. Ej: 5491123456789 */
     const val WHATSAPP = "5492604020907"
 

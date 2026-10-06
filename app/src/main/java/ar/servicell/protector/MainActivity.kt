@@ -124,34 +124,31 @@ class MainActivity : Activity() {
     private fun inicio() {
         ProteccionService.iniciar(this)
         val col = pantalla()
-        col.logo()
-        col.titulo("Hola, ${Prefs.nombre(this)} 👋", 32f)
-        col.texto("Tu celular está cuidado por ${Config.NEGOCIO} 🛡️", tam = 19f, color = Colores.GRIS)
+        val protegido = tieneNotificaciones() && Analizador.tienePermisoDeUso(this)
+        col.encabezado("Hola, ${Prefs.nombre(this)} 👋", protegido)
 
-        if (!tieneNotificaciones() || !Analizador.tienePermisoDeUso(this)) {
+        if (!protegido) {
             val t = col.tarjeta(Colores.AMARILLO)
             t.texto("⚠️ Falta un permiso para que la app funcione bien:", negrita = true)
             mostrarPermisos(t)
         }
 
-        col.espacio(8)
-        col.boton("🚨 ME MOLESTA UNA PUBLICIDAD", Colores.ROJO) {
-            startActivity(Intent(this, EmergenciaActivity::class.java))
-        }
-        col.boton("🔍 Revisar todo el celular", Colores.AZUL) {
-            startActivity(Intent(this, EmergenciaActivity::class.java).putExtra(EmergenciaActivity.EXTRA_COMPLETO, true))
-        }
-        col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") { Ayuda.pedirAyuda(this) }
-        col.boton("📋 Apps que borré", Colores.GRIS) {
-            startActivity(Intent(this, HistorialActivity::class.java))
-        }
-        col.boton("🔐 Seguridad de mis cuentas", Colores.AZUL) {
-            startActivity(Intent(this, SeguridadActivity::class.java))
-        }
-        col.boton("😵 No puedo usar el celular", Colores.GRIS) { Ayuda.mostrarModoSeguro(this) }
-        col.boton("🔒 Privacidad", Colores.GRIS) { Ayuda.mostrarPrivacidad(this) }
+        col.tarjetaEmergencia { startActivity(Intent(this, EmergenciaActivity::class.java)) }
 
-        col.espacio(16)
+        col.cuadricula(listOf(
+            Triple("🔍", "Revisar el celular") {
+                startActivity(Intent(this, EmergenciaActivity::class.java).putExtra(EmergenciaActivity.EXTRA_COMPLETO, true))
+            },
+            Triple("🔐", "Seguridad de cuentas") { startActivity(Intent(this, SeguridadActivity::class.java)) },
+            Triple("📋", "Apps que borré") { startActivity(Intent(this, HistorialActivity::class.java)) },
+            Triple("😵", "No puedo usar el celular") { Ayuda.mostrarModoSeguro(this) },
+            Triple("📸", "Seguinos en Instagram") { Ayuda.abrirInstagram(this) },
+            Triple("🔒", "Privacidad") { Ayuda.mostrarPrivacidad(this) },
+        ))
+
+        col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") { Ayuda.pedirAyuda(this) }
+
+        col.espacio(10)
         col.texto("Código del celular: ${Licencia.codigoCelular(this)}", tam = 14f, color = Colores.GRIS, centrado = true)
     }
 
