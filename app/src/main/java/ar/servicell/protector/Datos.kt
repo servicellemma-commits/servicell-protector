@@ -26,6 +26,20 @@ object Prefs {
     fun ultimaRevision(c: Context): Long = p(c).getLong("ultima_revision", 0L)
     fun setUltimaRevision(c: Context, v: Long) = p(c).edit().putLong("ultima_revision", v).apply()
 
+    /** App que hay que borrar en modo seguro (para preguntar al volver). */
+    fun setModoSeguroPendiente(c: Context, paquete: String, nombre: String) =
+        p(c).edit().putString("ms_pendiente", "$paquete|${nombre.replace("|", " ")}")
+            .putLong("ms_desde", System.currentTimeMillis()).apply()
+
+    /** (paquete, nombre) si hay una pendiente y pasaron al menos 2 minutos. */
+    fun modoSeguroPendiente(c: Context): Pair<String, String>? {
+        val v = p(c).getString("ms_pendiente", null) ?: return null
+        if (System.currentTimeMillis() - p(c).getLong("ms_desde", 0L) < 2 * 60_000) return null
+        return v.substringBefore("|") to v.substringAfter("|")
+    }
+
+    fun limpiarModoSeguro(c: Context) = p(c).edit().remove("ms_pendiente").remove("ms_desde").apply()
+
     /** Apps que el cliente quiso borrar (paquete|nombre), para anotarlas cuando se borren. */
     fun marcarParaBorrar(c: Context, paquete: String, nombre: String) {
         val limpias = (p(c).getStringSet("para_borrar", emptySet()) ?: emptySet())

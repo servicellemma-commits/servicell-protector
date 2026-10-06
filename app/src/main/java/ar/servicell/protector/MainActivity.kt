@@ -148,8 +148,33 @@ class MainActivity : Activity() {
 
         col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") { Ayuda.pedirAyuda(this) }
 
+        chequearModoSeguro()
+
         col.espacio(10)
         col.texto("Código del celular: ${Licencia.codigoCelular(this)}", tam = 14f, color = Colores.GRIS, centrado = true)
+    }
+
+    /** Al volver del modo seguro: ¿se pudo borrar la app anotada? */
+    private fun chequearModoSeguro() {
+        val (paquete, nombre) = Prefs.modoSeguroPendiente(this) ?: return
+        if (!Analizador.estaInstalada(this, paquete)) {
+            Prefs.registrarBorrada(this, paquete)
+            Prefs.limpiarModoSeguro(this)
+            android.app.AlertDialog.Builder(this)
+                .setTitle("✅ ¡Muy bien!")
+                .setMessage("Se borró «$nombre». Ya no debería aparecer más esa publicidad.")
+                .setPositiveButton("¡Genial!", null)
+                .show()
+            Voz(this).decir("Muy bien. Se borró $nombre.")
+        } else {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("¿Pudiste borrar «$nombre»?")
+                .setMessage("Todavía está instalada en tu celular.")
+                .setPositiveButton("🗑️ Borrarla ahora") { _, _ -> Ayuda.desinstalar(this, paquete) }
+                .setNeutralButton("Ver los pasos") { _, _ -> Ayuda.mostrarModoSeguro(this, paquete, nombre) }
+                .setNegativeButton("Ya no hace falta") { _, _ -> Prefs.limpiarModoSeguro(this) }
+                .show()
+        }
     }
 
     // ───────────── AUXILIARES ─────────────

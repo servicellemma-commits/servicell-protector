@@ -316,13 +316,13 @@ object Ayuda {
         d.show()
     }
 
-    fun mostrarModoSeguro(a: Activity) {
-        AlertDialog.Builder(a)
-            .setTitle("😵 No puedo usar el celular")
-            .setMessage(TEXTO_MODO_SEGURO)
-            .setPositiveButton("Entendido", null)
-            .setNeutralButton("Pedir ayuda") { _, _ -> pedirAyuda(a, "No puedo usar el celular por la publicidad.") }
-            .show()
+    /** Abre la guía paso a paso de modo seguro (con la app a borrar, si se sabe). */
+    fun mostrarModoSeguro(a: Activity, paquete: String? = null, nombre: String? = null) {
+        val i = Intent(a, ModoSeguroActivity::class.java)
+        if (paquete != null && nombre != null) {
+            i.putExtra(ModoSeguroActivity.EXTRA_PAQUETE, paquete).putExtra(ModoSeguroActivity.EXTRA_NOMBRE, nombre)
+        }
+        a.startActivity(i)
     }
 
     val TEXTO_PRIVACIDAD = """
@@ -350,23 +350,50 @@ object Ayuda {
     """.trimIndent()
 }
 
-/** 🔊 Lee en voz alta lo que dice la pantalla. */
+/**
+ * 🔊 Lee en voz alta lo que dice la pantalla.
+ * Elige la voz en español más natural que tenga el celular
+ * (prioriza calidad alta y acento latino) y habla un poco más pausado.
+ */
 class Voz(c: Context) {
     private var lista = false
     private var pendiente: String? = null
     private val tts: TextToSpeech = TextToSpeech(c.applicationContext) { estado ->
         if (estado == TextToSpeech.SUCCESS) {
+            elegirVoz()
             lista = true
             pendiente?.let { decir(it) }
             pendiente = null
         }
     }
 
+    private fun elegirVoz() {
+        try {
+            val acentos = listOf("AR", "UY", "419", "MX", "US", "CO", "CL", "PE", "ES")
+            val voces = tts.voices?.filter {
+                it.locale.language == "es" &&
+                    !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+            } ?: emptyList()
+            val mejor = voces.sortedWith(
+                compareByDescending<android.speech.tts.Voice> { it.quality }
+                    .thenBy { if (it.isNetworkConnectionRequired) 1 else 0 }
+                    .thenBy { v -> acentos.indexOf(v.locale.country).let { if (it < 0) 99 else it } }
+                    .thenBy { it.latency }
+            ).firstOrNull()
+            if (mejor != null) tts.setVoice(mejor) else tts.setLanguage(Locale("es", "AR"))
+            tts.setSpeechRate(0.9f)
+            tts.setPitch(1.0f)
+        } catch (e: Exception) {
+            try { tts.setLanguage(Locale("es", "AR")) } catch (e2: Exception) { }
+        }
+    }
+
     fun decir(texto: String) {
         if (!lista) { pendiente = texto; return }
-        // Si no hay voz en español, se usa la que tenga el celular.
-        try { tts.setLanguage(Locale("es", "AR")) } catch (e: Exception) { }
-        tts.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "servicell")
+        // Sin emojis ni símbolos, para que no los lea en voz alta
+        val limpio = texto.replace(Regex("[\\p{So}\\p{Sk}\\uFE0F\\u200D«»•]"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        tts.speak(limpio, TextToSpeech.QUEUE_FLUSH, null, "servicell")
     }
 
     fun callar() = tts.stop()

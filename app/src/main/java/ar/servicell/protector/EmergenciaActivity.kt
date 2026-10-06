@@ -107,6 +107,9 @@ class EmergenciaActivity : Activity() {
         } else {
             col.boton("🗑️ SÍ, BORRARLA", Colores.ROJO) { borrar(app) }
         }
+        col.boton("😵 No me deja borrarla", Colores.GRIS) {
+            Ayuda.mostrarModoSeguro(this, app.paquete, app.nombre)
+        }
         col.boton("⏸️ Frenarla un rato", Colores.AMARILLO, Colores.TEXTO) {
             Toast.makeText(this, "Tocá «Forzar detención» o «Desactivar»", Toast.LENGTH_LONG).show()
             Ayuda.abrirDetalles(this, app.paquete)
