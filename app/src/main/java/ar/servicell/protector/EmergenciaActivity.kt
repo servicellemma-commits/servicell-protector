@@ -63,7 +63,7 @@ class EmergenciaActivity : Activity() {
             val sigueInstalada = borrada != null && Analizador.estaInstalada(this, borrada)
             if (borrada != null && !sigueInstalada) Prefs.registrarBorrada(this, borrada)
             runOnUiThread {
-                animando.value = false
+                animando.set(false)
                 if (isFinishing) return@runOnUiThread
                 if (borrada != null && !sigueInstalada) {
                     Toast.makeText(this, "✅ ¡Listo! La app se borró.", Toast.LENGTH_LONG).show()
