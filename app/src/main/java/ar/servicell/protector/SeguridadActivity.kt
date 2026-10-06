@@ -40,7 +40,7 @@ class SeguridadActivity : Activity() {
             5. Cuando te pida un correo, ponelo (sirve si te olvidás el PIN).
             """.trimIndent(), tam = 19f
         )
-        w.boton("Abrir WhatsApp", Colores.VERDE) { abrirWhatsApp() }
+        w.botonWhatsApp("Abrir WhatsApp") { abrirWhatsApp() }
         casilla(w, "whatsapp_2pasos", "✅ Ya lo activé")
 
         // ───── 2) Google ─────
@@ -62,7 +62,7 @@ class SeguridadActivity : Activity() {
         }
         casilla(g, "google_revision", "✅ Ya lo revisé")
 
-        col.boton("💬 Pedir ayuda a ${Config.NEGOCIO}", Colores.VERDE) {
+        col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") {
             Ayuda.pedirAyuda(this, "Quiero ayuda para revisar la seguridad de mi WhatsApp y mi cuenta de Google.")
         }
         col.boton("⬅ Volver", Colores.GRIS) { finish() }

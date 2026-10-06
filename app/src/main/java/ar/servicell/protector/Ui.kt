@@ -98,6 +98,27 @@ fun LinearLayout.boton(texto: String, fondo: Int, colorTexto: Int = Color.WHITE,
     return b
 }
 
+/**
+ * Botón verde de WhatsApp. Muestra el ícono de WhatsApp que ya tiene instalado
+ * el celular (el mismo que usa Android al "Compartir"); si no está, usa un emoji.
+ */
+fun LinearLayout.botonWhatsApp(texto: String, alClick: () -> Unit): Button {
+    val icono = iconoWhatsApp(context)
+    val b = boton(if (icono != null) texto else "💬 $texto", Colores.VERDE) { alClick() }
+    if (icono != null) {
+        val tam = context.dp(32)
+        icono.setBounds(0, 0, tam, tam)
+        b.setCompoundDrawablesRelative(icono, null, null, null)
+        b.compoundDrawablePadding = context.dp(12)
+    }
+    return b
+}
+
+fun iconoWhatsApp(c: Context): android.graphics.drawable.Drawable? =
+    listOf("com.whatsapp", "com.whatsapp.w4b").firstNotNullOfOrNull {
+        try { c.packageManager.getApplicationIcon(it) } catch (e: Exception) { null }
+    }
+
 fun LinearLayout.tarjeta(colorBorde: Int): LinearLayout {
     val t = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL

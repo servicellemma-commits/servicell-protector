@@ -47,7 +47,7 @@ class MainActivity : Activity() {
             cm.setPrimaryClip(ClipData.newPlainText("codigo", codigo))
             Toast.makeText(this, "Código copiado", Toast.LENGTH_SHORT).show()
         }
-        col.boton("📲 Mandar mi código a ${Config.NEGOCIO}", Colores.VERDE) { Ayuda.mandarCodigo(this) }
+        col.botonWhatsApp("Mandar mi código a ${Config.NEGOCIO}") { Ayuda.mandarCodigo(this) }
         col.texto("Te respondemos por WhatsApp con tu código de activación.", tam = 17f, color = Colores.GRIS)
         col.espacio()
         col.texto("Código de activación (te lo da ${Config.NEGOCIO}):", negrita = true)
@@ -141,7 +141,7 @@ class MainActivity : Activity() {
         col.boton("🔍 Revisar todo el celular", Colores.AZUL) {
             startActivity(Intent(this, EmergenciaActivity::class.java).putExtra(EmergenciaActivity.EXTRA_COMPLETO, true))
         }
-        col.boton("💬 Pedir ayuda a ${Config.NEGOCIO}", Colores.VERDE) { Ayuda.pedirAyuda(this) }
+        col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") { Ayuda.pedirAyuda(this) }
         col.boton("📋 Apps que borré", Colores.GRIS) {
             startActivity(Intent(this, HistorialActivity::class.java))
         }

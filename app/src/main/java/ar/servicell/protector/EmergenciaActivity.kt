@@ -85,7 +85,7 @@ class EmergenciaActivity : Activity() {
             }
             col.texto("Si la publicidad sigue apareciendo:")
             col.boton("🔍 Revisar todo el celular", Colores.AZUL) { completo = true; mostrarTodas(lista) }
-            col.boton("💬 Pedir ayuda a ${Config.NEGOCIO}", Colores.VERDE) {
+            col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") {
                 Ayuda.pedirAyuda(this, "Me aparece publicidad y la app no encontró al culpable.")
             }
             col.boton("😵 No puedo usar el celular", Colores.GRIS) { Ayuda.mostrarModoSeguro(this) }
@@ -111,7 +111,7 @@ class EmergenciaActivity : Activity() {
             Toast.makeText(this, "Tocá «Forzar detención» o «Desactivar»", Toast.LENGTH_LONG).show()
             Ayuda.abrirDetalles(this, app.paquete)
         }
-        col.boton("💬 Avisar a ${Config.NEGOCIO}", Colores.VERDE) {
+        col.botonWhatsApp("Avisar a ${Config.NEGOCIO}") {
             Ayuda.pedirAyuda(this, "La app detectó: ${app.nombre} (${app.paquete}).")
         }
         col.boton("No es esa, ver otras", Colores.GRIS) { completo = true; mostrarTodas(lista) }
