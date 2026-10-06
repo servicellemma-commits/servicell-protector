@@ -176,33 +176,107 @@ fun LinearLayout.tarjetaEmergencia(alClick: () -> Unit) {
     addView(caja, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(18) })
 }
 
+/** Un acceso de la cuadrícula: emoji o ícono real (por ejemplo, el de Instagram del celular). */
+class Acceso(
+    val emoji: String,
+    val texto: String,
+    val icono: android.graphics.drawable.Drawable? = null,
+    val accion: () -> Unit,
+)
+
 /** 🔲 Cuadrícula de accesos rápidos (2 por fila). */
-fun LinearLayout.cuadricula(items: List<Triple<String, String, () -> Unit>>) {
+fun LinearLayout.cuadricula(items: List<Acceso>) {
     val c = context
     items.chunked(2).forEach { fila ->
         val f = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
-        fila.forEachIndexed { i, (emoji, texto, accion) ->
+        fila.forEachIndexed { i, a ->
             val t = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                minimumHeight = c.dp(118)
+                minimumHeight = c.dp(122)
                 setPadding(c.dp(10), c.dp(16), c.dp(10), c.dp(16))
-                background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = c.dp(22).toFloat() }
-                elevation = c.dp(2).toFloat()
+                background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = c.dp(24).toFloat() }
+                elevation = c.dp(3).toFloat()
                 isClickable = true
-                setOnClickListener { accion() }
+                setOnClickListener { a.accion() }
             }
-            t.addView(TextView(c).apply { text = emoji; textSize = 34f; gravity = Gravity.CENTER })
+            if (a.icono != null) {
+                t.addView(android.widget.ImageView(c).apply { setImageDrawable(a.icono) },
+                    LinearLayout.LayoutParams(c.dp(44), c.dp(44)))
+            } else {
+                // Círculo de color suave detrás del emoji
+                t.addView(TextView(c).apply {
+                    text = a.emoji; textSize = 28f; gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL; setColor(Color.parseColor("#F1F2F4"))
+                    }
+                }, LinearLayout.LayoutParams(c.dp(56), c.dp(56)))
+            }
             t.addView(TextView(c).apply {
-                text = texto; textSize = 17f; gravity = Gravity.CENTER
+                text = a.texto; textSize = 16f; gravity = Gravity.CENTER
                 setTextColor(Colores.TEXTO); setTypeface(typeface, Typeface.BOLD)
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = c.dp(8) })
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = c.dp(10) })
             f.addView(t, LinearLayout.LayoutParams(0, -2, 1f).apply {
                 if (i == 0) rightMargin = c.dp(7) else leftMargin = c.dp(7)
             })
         }
         if (fila.size == 1) f.addView(View(c), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = c.dp(7) })
         addView(f, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(14) })
+    }
+}
+
+fun iconoDeApp(c: Context, vararg paquetes: String): android.graphics.drawable.Drawable? =
+    paquetes.firstNotNullOfOrNull { try { c.packageManager.getApplicationIcon(it) } catch (e: Exception) { null } }
+
+/** 📊 Resumen de la revisión: total y cuántas de cada color. */
+fun LinearLayout.resumen(total: Int, rojas: Int, amarillas: Int) {
+    val c = context
+    val caja = LinearLayout(c).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(c.dp(20), c.dp(20), c.dp(20), c.dp(18))
+        background = GradientDrawable().apply { setColor(Colores.OSCURO); cornerRadius = c.dp(26).toFloat() }
+        elevation = c.dp(4).toFloat()
+    }
+    caja.addView(TextView(c).apply {
+        text = "🛡️  Revisé $total apps"; textSize = 22f
+        setTextColor(Color.WHITE); setTypeface(typeface, Typeface.BOLD)
+    })
+    val fila = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+    listOf(
+        Triple(rojas, "peligrosas", Color.parseColor("#FF6B6B")),
+        Triple(amarillas, "a revisar", Color.parseColor("#FFD54F")),
+        Triple(maxOf(0, total - rojas - amarillas), "tranquilas", Color.parseColor("#7CE29A")),
+    ).forEachIndexed { i, (n, txt, col) ->
+        val p = LinearLayout(c).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(c.dp(6), c.dp(10), c.dp(6), c.dp(10))
+            background = GradientDrawable().apply { setColor(Color.parseColor("#262626")); cornerRadius = c.dp(16).toFloat() }
+        }
+        p.addView(TextView(c).apply { text = "$n"; textSize = 26f; setTextColor(col); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER })
+        p.addView(TextView(c).apply { text = txt; textSize = 14f; setTextColor(Color.parseColor("#BDBDBD")); gravity = Gravity.CENTER })
+        fila.addView(p, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            if (i > 0) leftMargin = c.dp(8)
+        })
+    }
+    caja.addView(fila, LinearLayout.LayoutParams(-1, -2).apply { topMargin = c.dp(14) })
+    addView(caja, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = c.dp(18) })
+}
+
+/** Barra de riesgo de 0 a 15 puntos. */
+fun LinearLayout.barraRiesgo(puntos: Int, color: Int) {
+    val c = context
+    val fondo = android.widget.FrameLayout(c).apply {
+        background = GradientDrawable().apply { setColor(Color.parseColor("#ECEFF1")); cornerRadius = c.dp(8).toFloat() }
+    }
+    val lleno = View(c).apply {
+        background = GradientDrawable().apply { setColor(color); cornerRadius = c.dp(8).toFloat() }
+    }
+    fondo.addView(lleno, android.widget.FrameLayout.LayoutParams(0, -1))
+    addView(fondo, LinearLayout.LayoutParams(-1, c.dp(12)).apply { bottomMargin = c.dp(12) })
+    fondo.post {
+        val ancho = (fondo.width * (puntos.coerceIn(1, 15) / 15f)).toInt()
+        lleno.layoutParams = lleno.layoutParams.apply { width = ancho }
+        lleno.requestLayout()
     }
 }
 

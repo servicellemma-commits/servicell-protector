@@ -25,8 +25,8 @@ class AppRevisada(
 ) {
     val nivel: Nivel
         get() = when {
-            puntos >= 7 -> Nivel.PELIGROSA
-            puntos >= 4 -> Nivel.REVISAR
+            puntos >= 9 -> Nivel.PELIGROSA
+            puntos >= 5 -> Nivel.REVISAR
             else -> Nivel.TRANQUILA
         }
 }
@@ -54,11 +54,33 @@ object Analizador {
         "com.microsoft.", "com.ualabee.", "ar.com.", "com.brubank", "com.naranjax",
     )
 
-    private val PALABRAS_SOSPECHOSAS = listOf(
-        "limpia", "clean", "boost", "bater", "battery", "update", "actualiz",
-        "sistema", "system", "wallpaper", "fondo", "linterna", "flashlight",
-        "optimi", "acelera", "speed", "antivirus", "security", "seguridad",
+    // Nombres típicos de "limpiadores" y apps engañosas
+    private val NOMBRES_FUERTES = listOf(
+        "clean", "limpi", "boost", "acelera", "junk", "basura", "cooler", "enfria", "enfría",
+        "optimi", "phone master", "phonemaster", "antivirus", "virus", "cache", "battery saver",
+        "batterysaver", "ahorro de bater", "speed up", "speedup", "ram ",
     )
+    private val NOMBRES_DEBILES = listOf(
+        "bater", "battery", "update", "actualiz", "sistema", "system", "security", "seguridad",
+        "wallpaper", "fondo", "linterna", "flashlight", "torch", "qr", "pdf", "weather", "clima",
+        "vpn", "recover", "recuper", "file manager", "launcher",
+    )
+
+    // Empresas de publicidad: un limpiador falso suele tener MUCHAS a la vez
+    private val REDES_DE_PUBLICIDAD = mapOf(
+        "com.google.android.gms.ads" to "Google", "com.applovin" to "AppLovin",
+        "com.unity3d.ads" to "Unity", "com.unity3d.services" to "Unity", "com.ironsource" to "ironSource",
+        "com.facebook.ads" to "Meta", "com.bytedance.sdk.openadsdk" to "Pangle", "com.pangle" to "Pangle",
+        "com.mbridge" to "Mintegral", "com.mintegral" to "Mintegral", "com.vungle" to "Vungle",
+        "com.inmobi" to "InMobi", "com.chartboost" to "Chartboost", "com.fyber" to "Fyber",
+        "com.inneractive" to "Fyber", "com.my.target" to "myTarget", "com.yandex.mobile.ads" to "Yandex",
+        "com.adcolony" to "AdColony", "sg.bigo.ads" to "Bigo", "com.bigossp" to "Bigo",
+        "com.tapjoy" to "Tapjoy", "com.startapp" to "Start.io", "com.smaato" to "Smaato",
+        "com.verve" to "Verve", "com.amazon.device.ads" to "Amazon",
+    )
+
+    /** Cantidad de apps revisadas en el último análisis. */
+    @Volatile var ultimoTotal = 0
 
     /** Revisa todas las apps instaladas por el usuario. La más sospechosa queda primera. */
     fun analizar(c: Context, minutosRecientes: Long = 10): List<AppRevisada> {
@@ -68,7 +90,9 @@ object Analizador {
         val accesibilidad = conAccesibilidad(c)
         val confiables = Prefs.confiables(c)
 
-        return paquetesDeUsuario(pm)
+        val todas = paquetesDeUsuario(pm)
+        ultimoTotal = todas.size
+        return todas
             .filter { it.packageName != c.packageName && it.packageName !in confiables }
             .mapNotNull { evaluar(c, it, recientes, admins, accesibilidad) }
             .filter { it.puntos > 0 }
@@ -80,8 +104,8 @@ object Analizador {
      * estaba abierta hace un momento y además tiene varias señales feas.
      */
     fun culpable(lista: List<AppRevisada>): AppRevisada? =
-        lista.firstOrNull { it.abiertaRecien && it.puntos >= 6 }
-            ?: lista.firstOrNull { it.puntos >= 8 }
+        lista.firstOrNull { it.abiertaRecien && it.puntos >= 7 }
+            ?: lista.firstOrNull { it.puntos >= 11 }
 
     /** Revisa una sola app (se usa cuando se instala algo nuevo). */
     fun evaluarUna(c: Context, paquete: String): AppRevisada? {
@@ -115,20 +139,50 @@ object Analizador {
         if (desdeTienda && CONOCIDAS.any { paquete.startsWith(it) }) return null
 
         val nombre = try { ai.loadLabel(pm).toString() } catch (e: Exception) { paquete }
-        val permisos = pi.requestedPermissions?.toSet() ?: emptySet()
+        // Se piden también las pantallas y servicios, para ver qué trae "adentro"
+        val detalle = detallePaquete(pm, paquete) ?: pi
+        val permisos = detalle.requestedPermissions?.toSet() ?: pi.requestedPermissions?.toSet() ?: emptySet()
+        val componentes = (detalle.activities?.map { it.name } ?: emptyList()) +
+            (detalle.services?.map { it.name } ?: emptyList())
+        val permisosServicios = detalle.services?.mapNotNull { it.permission }?.toSet() ?: emptySet()
+        fun tiene(p: String) = "android.permission.$p" in permisos
+
         val motivos = mutableListOf<String>()
         var puntos = 0
         fun suma(p: Int, motivo: String) { puntos += p; motivos += motivo }
 
+        // ── Señales fuertes ──
         if (paquete in Config.VIRUS_CONOCIDOS) suma(10, "Está en la lista de virus conocidos de ${Config.NEGOCIO}")
         if (!desdeTienda) suma(3, "No se descargó de la tienda oficial (Play Store)")
         if (pm.getLaunchIntentForPackage(paquete) == null) suma(3, "Está escondida: no tiene ícono en el menú")
         if (paquete in admins) suma(3, "Se puso como administradora del celular para que no la puedan borrar")
         if (paquete in accesibilidad) suma(3, "Tiene permiso para controlar la pantalla")
-        if ("android.permission.SYSTEM_ALERT_WINDOW" in permisos) suma(2, "Puede mostrarse encima de otras apps")
+        else if ("android.permission.BIND_ACCESSIBILITY_SERVICE" in permisosServicios) suma(1, "Quiere permiso para controlar la pantalla")
+
         val n = (nombre + " " + paquete).lowercase()
-        if (PALABRAS_SOSPECHOSAS.any { it in n }) suma(2, "Tiene un nombre típico de apps engañosas")
-        if ("android.permission.RECEIVE_BOOT_COMPLETED" in permisos) suma(1, "Arranca sola al prender el celular")
+        when {
+            NOMBRES_FUERTES.any { it in n } -> suma(3, "Tiene nombre de «limpiador» o «acelerador», típico de apps con publicidad")
+            NOMBRES_DEBILES.any { it in n } -> suma(1, "Tiene un nombre que suelen usar las apps engañosas")
+        }
+
+        val redes = REDES_DE_PUBLICIDAD.filterKeys { pref -> componentes.any { it.startsWith(pref) } }.values.toSet()
+        when {
+            redes.size >= 5 -> suma(3, "Trae publicidad de ${redes.size} empresas distintas")
+            redes.size >= 3 -> suma(2, "Trae publicidad de ${redes.size} empresas distintas")
+        }
+
+        // ── Permisos típicos de apps con publicidad abusiva ──
+        if (tiene("SYSTEM_ALERT_WINDOW")) suma(2, "Puede mostrarse encima de otras apps")
+        if (tiene("USE_FULL_SCREEN_INTENT")) suma(2, "Puede abrir pantallas completas sola (así aparecen las publicidades)")
+        if (tiene("KILL_BACKGROUND_PROCESSES")) suma(2, "Cierra otras apps para hacer creer que «limpia»")
+        if (tiene("REQUEST_INSTALL_PACKAGES")) suma(2, "Puede instalar otras apps")
+        if ("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" in permisosServicios)
+            suma(2, "Quiere leer tus notificaciones")
+        if (tiene("PACKAGE_USAGE_STATS")) suma(1, "Quiere saber qué apps usás")
+        if (tiene("REQUEST_IGNORE_BATTERY_OPTIMIZATIONS")) suma(1, "Pide que el celular no la apague nunca")
+        if (tiene("RECEIVE_BOOT_COMPLETED")) suma(1, "Arranca sola al prender el celular")
+        if (ai.targetSdkVersion in 1..27) suma(1, "Está hecha para un Android viejo (evita controles nuevos)")
+
         if (System.currentTimeMillis() - pi.firstInstallTime < 7L * 24 * 60 * 60 * 1000) suma(1, "Se instaló hace pocos días")
         val reciente = paquete in recientes
         if (reciente) suma(4, "Estaba abierta hace un momento")
@@ -136,6 +190,14 @@ object Analizador {
         val icono = try { ai.loadIcon(pm) } catch (e: Exception) { null }
         return AppRevisada(paquete, nombre, icono, puntos, motivos, paquete in admins, reciente)
     }
+
+    @Suppress("DEPRECATION")
+    private fun detallePaquete(pm: PackageManager, paquete: String): PackageInfo? = try {
+        pm.getPackageInfo(
+            paquete,
+            PackageManager.GET_PERMISSIONS or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES
+        )
+    } catch (e: Throwable) { null }
 
     @Suppress("DEPRECATION")
     private fun infoPaquete(pm: PackageManager, paquete: String): PackageInfo? = try {

@@ -120,7 +120,7 @@ class MainActivity : Activity() {
         val col = pantalla()
         col.logo()
         col.titulo("⚙️ Último paso")
-        col.texto("Hay que dar 2 permisos para que la app pueda ayudarte. Se hace una sola vez.")
+        col.texto("Hay que dar unos permisos para que la app pueda ayudarte. Se hace una sola vez.")
         mostrarPermisos(col)
         col.boton("Listo ➜", Colores.VERDE) {
             Prefs.setPermisosVistos(this)
@@ -145,6 +145,25 @@ class MainActivity : Activity() {
         if (!uso) {
             col.texto("Buscá «Servicell Protector» en la lista y activalo.", tam = 17f, color = Colores.GRIS)
             col.boton("Dar acceso de uso", Colores.AZUL) { Ayuda.abrirPermisoDeUso(this) }
+        }
+        val bateria = sinLimiteDeBateria()
+        col.texto(
+            (if (bateria) "✅" else "⚠️") + " Batería: para que el sistema no apague la protección.",
+            tam = 19f
+        )
+        if (!bateria) col.boton("Permitir que funcione siempre", Colores.AZUL) { pedirSinLimiteDeBateria() }
+    }
+
+    private fun sinLimiteDeBateria(): Boolean =
+        getSystemService(android.os.PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) ?: true
+
+    @android.annotation.SuppressLint("BatteryLife")
+    private fun pedirSinLimiteDeBateria() {
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                android.net.Uri.parse("package:$packageName")))
+        } catch (e: Exception) {
+            try { startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (e2: Exception) { }
         }
     }
 
@@ -171,7 +190,7 @@ class MainActivity : Activity() {
             t.boton("Ingresar código nuevo", Colores.AZUL) { renovando = true; mostrar() }
         }
 
-        if (!protegido) {
+        if (!protegido || !sinLimiteDeBateria()) {
             val t = col.tarjeta(Colores.AMARILLO)
             t.texto("⚠️ Falta un permiso para que la app funcione bien:", negrita = true)
             mostrarPermisos(t)
@@ -180,15 +199,18 @@ class MainActivity : Activity() {
         col.tarjetaEmergencia { startActivity(Intent(this, EmergenciaActivity::class.java)) }
 
         col.cuadricula(listOf(
-            Triple("🔍", "Revisar el celular") {
+            Acceso("🔍", "Revisar el celular") {
                 startActivity(Intent(this, EmergenciaActivity::class.java).putExtra(EmergenciaActivity.EXTRA_COMPLETO, true))
             },
-            Triple("🔐", "Seguridad de cuentas") { startActivity(Intent(this, SeguridadActivity::class.java)) },
-            Triple("📋", "Apps que borré") { startActivity(Intent(this, HistorialActivity::class.java)) },
-            Triple("😵", "No puedo usar el celular") { Ayuda.mostrarModoSeguro(this) },
-            Triple("⚡", "Atajos de emergencia") { startActivity(Intent(this, AtajoActivity::class.java)) },
-            Triple("📸", "Seguinos en Instagram") { Ayuda.abrirInstagram(this) },
-            Triple("🔒", "Privacidad") { Ayuda.mostrarPrivacidad(this) },
+            Acceso("🔐", "Seguridad de cuentas") { startActivity(Intent(this, SeguridadActivity::class.java)) },
+            Acceso("📋", "Apps que borré") { startActivity(Intent(this, HistorialActivity::class.java)) },
+            Acceso("😵", "No puedo usar el celular") { Ayuda.mostrarModoSeguro(this) },
+            Acceso("⚡", "Atajos de emergencia") { startActivity(Intent(this, AtajoActivity::class.java)) },
+            Acceso("🔒", "Privacidad") { Ayuda.mostrarPrivacidad(this) },
+            // Muestra el ícono de Instagram que ya tiene el celular (si no está, un emoji)
+            Acceso("📸", "Seguinos en Instagram", iconoDeApp(this, "com.instagram.android", "com.instagram.lite")) {
+                Ayuda.abrirInstagram(this)
+            },
         ))
 
         col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") { Ayuda.pedirAyuda(this) }

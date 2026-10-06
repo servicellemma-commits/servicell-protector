@@ -61,6 +61,8 @@ class ProteccionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Cada vez que se abre la app, también se fija si apareció algo nuevo
+        try { Alertas.revisarAppsNuevas(this) } catch (e: Exception) { }
         // Vuelve a mostrar el botón (por si recién se dio el permiso de notificaciones)
         try {
             getSystemService(NotificationManager::class.java).notify(Alertas.ID_BOTON, Alertas.notificacionBoton(this))
@@ -152,7 +154,7 @@ object Alertas {
 
     // Las apps de la Play Store solo avisan si juntan varias señales sospechosas
     // (ej: nombre de "limpiador" + se pone encima de otras apps + arranca sola).
-    private const val PUNTOS_MINIMOS_TIENDA = 6
+    private const val PUNTOS_MINIMOS_TIENDA = 7
 
     private fun avisarAppNueva(c: Context, paquete: String, desdeTienda: Boolean) {
         val app = Analizador.evaluarUna(c, paquete) ?: return  // null = app conocida y confiable
@@ -282,6 +284,8 @@ class RevisionReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         Vencimiento.revisar(c)
         if (!Licencia.estaActivada(c)) return
+        // Red de seguridad: si el servicio estuvo apagado, igual detecta apps nuevas
+        try { Alertas.revisarAppsNuevas(c) } catch (e: Exception) { }
         val pendiente = goAsync()
         RevisionSemanal.revisarSiToca(c.applicationContext) { pendiente.finish() }
     }

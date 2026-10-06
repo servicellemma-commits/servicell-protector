@@ -48,19 +48,22 @@ class EmergenciaActivity : Activity() {
     }
 
     private fun revisar() {
-        val col = pantalla()
-        col.titulo("🔍 Buscando…")
-        col.texto("Esperá un momento, estoy revisando tu celular.")
+        val animando = pantallaEscaneo()
 
         // Si volvemos de borrar una app, avisamos si se borró
         val borrada = paqueteEnBorrado
         paqueteEnBorrado = null
 
         Thread {
+            val inicio = System.currentTimeMillis()
             val lista = Analizador.analizar(this)
+            // Que la animación se vea al menos un ratito
+            val falta = 1800 - (System.currentTimeMillis() - inicio)
+            if (falta > 0) Thread.sleep(falta)
             val sigueInstalada = borrada != null && Analizador.estaInstalada(this, borrada)
             if (borrada != null && !sigueInstalada) Prefs.registrarBorrada(this, borrada)
             runOnUiThread {
+                animando.value = false
                 if (isFinishing) return@runOnUiThread
                 if (borrada != null && !sigueInstalada) {
                     Toast.makeText(this, "✅ ¡Listo! La app se borró.", Toast.LENGTH_LONG).show()
@@ -69,6 +72,71 @@ class EmergenciaActivity : Activity() {
                 if (completo) mostrarTodas(lista) else mostrarCulpable(lista)
             }
         }.start()
+    }
+
+    /** 🛡️ Pantalla animada mientras revisa: escudo que late y mensajes que cambian. */
+    private fun pantallaEscaneo(): java.util.concurrent.atomic.AtomicBoolean {
+        val activo = java.util.concurrent.atomic.AtomicBoolean(true)
+        val raiz = android.widget.FrameLayout(this).apply { setBackgroundColor(Colores.OSCURO) }
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(32), 0, dp(32), 0)
+        }
+        val escudo = android.widget.TextView(this).apply {
+            text = "🛡️"; textSize = 96f; gravity = android.view.Gravity.CENTER
+        }
+        val titulo = android.widget.TextView(this).apply {
+            text = "Revisando tu celular…"; textSize = 26f
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+        }
+        val detalle = android.widget.TextView(this).apply {
+            textSize = 18f; setTextColor(android.graphics.Color.parseColor("#BDBDBD"))
+            gravity = android.view.Gravity.CENTER
+        }
+        val barra = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#7CE29A"))
+        }
+        col.addView(escudo)
+        col.addView(titulo, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        col.addView(detalle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        col.addView(barra, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(28) })
+        raiz.addView(col, android.widget.FrameLayout.LayoutParams(-1, -1))
+        setContentView(raiz)
+
+        // Latido del escudo
+        val latido = android.animation.ObjectAnimator.ofPropertyValuesHolder(
+            escudo,
+            android.animation.PropertyValuesHolder.ofFloat("scaleX", 1f, 1.12f),
+            android.animation.PropertyValuesHolder.ofFloat("scaleY", 1f, 1.12f),
+        ).apply {
+            duration = 650
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            start()
+        }
+        // Mensajes que van cambiando
+        val mensajes = listOf(
+            "Mirando las apps instaladas", "Buscando publicidad escondida",
+            "Revisando permisos peligrosos", "Buscando limpiadores falsos", "Ya casi termino",
+        )
+        val h = android.os.Handler(mainLooper)
+        var i = 0
+        val cambiar = object : Runnable {
+            override fun run() {
+                if (!activo.get()) { latido.cancel(); return }
+                detalle.text = mensajes[i % mensajes.size] + "…"
+                detalle.alpha = 0f
+                detalle.animate().alpha(1f).setDuration(250).start()
+                i++
+                h.postDelayed(this, 700)
+            }
+        }
+        h.post(cambiar)
+        return activo
     }
 
     // ───────────── MODO EMERGENCIA: una sola app, la culpable ─────────────
@@ -127,6 +195,12 @@ class EmergenciaActivity : Activity() {
         val col = pantalla()
         val sospechosas = lista.filter { it.nivel != Nivel.TRANQUILA }
 
+        col.resumen(
+            Analizador.ultimoTotal,
+            sospechosas.count { it.nivel == Nivel.PELIGROSA },
+            sospechosas.count { it.nivel == Nivel.REVISAR },
+        )
+
         if (sospechosas.isEmpty()) {
             col.titulo("✅ Todo tranquilo")
             col.texto("No encontré apps sospechosas en tu celular.")
@@ -163,6 +237,13 @@ class EmergenciaActivity : Activity() {
         }
         fila.addView(nombre, LinearLayout.LayoutParams(0, -2, 1f))
         t.addView(fila, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+
+        t.texto(
+            (if (app.nivel == Nivel.PELIGROSA) "PELIGROSA" else "PARA REVISAR") + "  ·  riesgo ${minOf(app.puntos, 15)}/15",
+            tam = 15f, negrita = true,
+            color = if (app.nivel == Nivel.PELIGROSA) Colores.ROJO else android.graphics.Color.parseColor("#B7791F")
+        )
+        t.barraRiesgo(app.puntos, color)
 
         t.texto(app.motivos.joinToString("\n") { "• $it" }, tam = 18f)
 
