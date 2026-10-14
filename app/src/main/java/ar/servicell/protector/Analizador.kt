@@ -79,6 +79,63 @@ object Analizador {
         "com.verve" to "Verve", "com.amazon.device.ads" to "Amazon",
     )
 
+    // Apps famosas que los virus suelen imitar → paquetes oficiales
+    private val OFICIALES = mapOf(
+        "whatsapp" to setOf("com.whatsapp", "com.whatsapp.w4b"),
+        "whatsapp business" to setOf("com.whatsapp.w4b"),
+        "instagram" to setOf("com.instagram.android", "com.instagram.lite"),
+        "facebook" to setOf("com.facebook.katana", "com.facebook.lite"),
+        "messenger" to setOf("com.facebook.orca", "com.facebook.mlite"),
+        "tiktok" to setOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go"),
+        "telegram" to setOf("org.telegram.messenger", "org.telegram.messenger.web"),
+        "chrome" to setOf("com.android.chrome"),
+        "youtube" to setOf("com.google.android.youtube"),
+        "gmail" to setOf("com.google.android.gm"),
+        "google" to setOf("com.google.android.googlequicksearchbox"),
+        "play store" to setOf("com.android.vending"),
+        "google play" to setOf("com.android.vending"),
+        "google play services" to setOf("com.google.android.gms"),
+        "servicios de google play" to setOf("com.google.android.gms"),
+        "mercado pago" to setOf("com.mercadopago.wallet"),
+        "mercado libre" to setOf("com.mercadolibre"),
+        "netflix" to setOf("com.netflix.mediaclient"),
+        "spotify" to setOf("com.spotify.music"),
+    )
+
+    /** Nombre "limpio" para comparar: minúsculas, sin acentos ni símbolos. */
+    private fun normalizarNombre(s: String): String =
+        java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+
+    /**
+     * Nombres de las apps ORIGINALES del celular (de fábrica o bajadas de la tienda):
+     * nombre limpio → paquete. Sirve para descubrir copias truchas con el mismo nombre.
+     */
+    @Suppress("DEPRECATION")
+    private fun nombresOriginales(c: Context): Map<String, String> {
+        val pm = c.packageManager
+        val mapa = HashMap<String, String>()
+        val apps = try { pm.getInstalledApplications(0) } catch (e: Exception) { emptyList() }
+        for (ai in apps) {
+            val sistema = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (!sistema && instalador(pm, ai.packageName) !in TIENDAS) continue
+            val n = try { normalizarNombre(ai.loadLabel(pm).toString()) } catch (e: Exception) { "" }
+            if (n.length >= 3) mapa.putIfAbsent(n, ai.packageName)
+        }
+        return mapa
+    }
+
+    /** Si el nombre imita a una app famosa, devuelve el nombre de esa app. */
+    private fun imitaA(nombreLimpio: String, paquete: String): String? {
+        for ((famosa, oficiales) in OFICIALES) {
+            if (paquete in oficiales) return null
+            if (nombreLimpio == famosa || nombreLimpio.startsWith("$famosa ")) return famosa
+        }
+        return null
+    }
+
     /** Cantidad de apps revisadas en el último análisis. */
     @Volatile var ultimoTotal = 0
 
@@ -90,11 +147,12 @@ object Analizador {
         val accesibilidad = conAccesibilidad(c)
         val confiables = Prefs.confiables(c)
 
+        val originales = nombresOriginales(c)
         val todas = paquetesDeUsuario(pm)
         ultimoTotal = todas.size
         return todas
             .filter { it.packageName != c.packageName && it.packageName !in confiables }
-            .mapNotNull { evaluar(c, it, recientes, admins, accesibilidad) }
+            .mapNotNull { evaluar(c, it, recientes, admins, accesibilidad, originales) }
             .filter { it.puntos > 0 }
             .sortedWith(compareByDescending<AppRevisada> { it.puntos }.thenByDescending { it.abiertaRecien })
     }
@@ -110,7 +168,7 @@ object Analizador {
     /** Revisa una sola app (se usa cuando se instala algo nuevo). */
     fun evaluarUna(c: Context, paquete: String): AppRevisada? {
         val pi = infoPaquete(c.packageManager, paquete) ?: return null
-        return evaluar(c, pi, emptySet(), administradores(c), conAccesibilidad(c))
+        return evaluar(c, pi, emptySet(), administradores(c), conAccesibilidad(c), nombresOriginales(c))
     }
 
     fun estaInstalada(c: Context, paquete: String) = infoPaquete(c.packageManager, paquete) != null
@@ -130,6 +188,7 @@ object Analizador {
         recientes: Set<String>,
         admins: Set<String>,
         accesibilidad: Set<String>,
+        originales: Map<String, String> = emptyMap(),
     ): AppRevisada? {
         val pm = c.packageManager
         val paquete = pi.packageName
@@ -184,6 +243,19 @@ object Analizador {
         if (ai.targetSdkVersion in 1..27) suma(1, "Está hecha para un Android viejo (evita controles nuevos)")
 
         if (System.currentTimeMillis() - pi.firstInstallTime < 7L * 24 * 60 * 60 * 1000) suma(1, "Se instaló hace pocos días")
+        // ── Gemelos truchos: copia de una app conocida, bajada de afuera de la tienda ──
+        if (!desdeTienda) {
+            val limpio = normalizarNombre(nombre)
+            val original = originales[limpio]
+            val famosa = imitaA(limpio, paquete)
+            when {
+                original != null && original != paquete ->
+                    suma(5, "Copia trucha: hay otra app «$nombre» original, y esta no viene de la tienda")
+                famosa != null ->
+                    suma(5, "Se hace pasar por «${nombre}», pero no es la app oficial")
+            }
+        }
+
         val reciente = paquete in recientes
         if (reciente) suma(4, "Estaba abierta hace un momento")
 
