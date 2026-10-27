@@ -16,8 +16,8 @@ android {
         applicationId = "ar.servicell.protector"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.2"
+        versionCode = 14
+        versionName = "2.3"
         buildConfigField("String", "CLAVE_SECRETA", "\"$claveSecreta\"")
     }
 

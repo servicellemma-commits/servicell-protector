@@ -263,6 +263,26 @@ class EmergenciaActivity : Activity() {
     }
 
     private fun borrar(app: AppRevisada) {
+        if (app.conocida) {
+            // Freno de seguridad: es una app de marca conocida, puede ser la original
+            android.app.AlertDialog.Builder(this)
+                .setTitle("⚠️ «${app.nombre}» es una app conocida")
+                .setMessage("Puede ser la original. Si la bajaste vos de la Play Store, no la borres: tocá «Es mía».\n\n¿Seguro que querés borrarla?")
+                .setPositiveButton("Sí, borrar igual") { _, _ -> borrarYa(app) }
+                .setNegativeButton("Es mía, no borrar") { _, _ ->
+                    Prefs.agregarConfiable(this, app.paquete)
+                    Toast.makeText(this, "Listo, no la marco más", Toast.LENGTH_SHORT).show()
+                    revisar()
+                }
+                .setNeutralButton("Cancelar", null)
+                .show()
+            voz.decir("Cuidado. ${app.nombre} es una app conocida. Puede ser la original.")
+            return
+        }
+        borrarYa(app)
+    }
+
+    private fun borrarYa(app: AppRevisada) {
         voz.callar()
         paqueteEnBorrado = app.paquete
         Prefs.marcarParaBorrar(this, app.paquete, app.nombre)

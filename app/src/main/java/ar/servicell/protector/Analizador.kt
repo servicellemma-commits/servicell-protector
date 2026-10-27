@@ -22,6 +22,8 @@ class AppRevisada(
     val motivos: List<String>,
     val esAdmin: Boolean,
     val abiertaRecien: Boolean,
+    /** Es una app de una marca conocida (Facebook, WhatsApp, bancos…). */
+    val conocida: Boolean = false,
 ) {
     val nivel: Nivel
         get() = when {
@@ -38,11 +40,31 @@ object Analizador {
 
     private val TIENDAS = setOf(
         "com.android.vending",                 // Play Store
+        "com.google.android.feedback",         // Play Store (celulares viejos)
         "com.sec.android.app.samsungapps",     // Galaxy Store
-        "com.huawei.appmarket",
-        "com.xiaomi.market",
+        "com.huawei.appmarket",                // AppGallery
+        "com.xiaomi.market", "com.xiaomi.mipicks", "com.xiaomi.discover",
+        "com.heytap.market", "com.oppo.market", // Oppo / Realme
+        "com.vivo.appstore",
         "com.amazon.venezia",
+        // Restauración al cambiar de celular (copian las apps del celular viejo)
+        "com.sec.android.easyMover",           // Samsung Smart Switch
+        "com.google.android.apps.restore",     // Restaurar de Google
+        "com.motorola.migrate", "com.miui.backup", "com.coloros.backuprestore",
+        // Instaladores oficiales de Facebook (preinstalados de fábrica)
+        "com.facebook.system", "com.facebook.appmanager",
     )
+
+    /**
+     * Instaladores "a mano": cuando alguien abrió un archivo APK suelto.
+     * Si una app conocida (Facebook, WhatsApp…) vino así, sí puede ser una copia trucha.
+     */
+    private val INSTALADORES_MANUALES = setOf(
+        "com.google.android.packageinstaller", "com.android.packageinstaller",
+        "com.samsung.android.packageinstaller", "com.miui.packageinstaller",
+    )
+
+    private enum class Origen { TIENDA, PREINSTALADA, MANUAL, OTRA_APP }
 
     // Apps conocidas: se ignoran SOLO si vinieron de una tienda oficial
     // (un virus puede disfrazarse con el nombre "com.google...", pero no viene de la tienda).
@@ -120,7 +142,7 @@ object Analizador {
         val apps = try { pm.getInstalledApplications(0) } catch (e: Exception) { emptyList() }
         for (ai in apps) {
             val sistema = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            if (!sistema && instalador(pm, ai.packageName) !in TIENDAS) continue
+            if (!sistema && origen(pm, ai.packageName) != Origen.TIENDA) continue
             val n = try { normalizarNombre(ai.loadLabel(pm).toString()) } catch (e: Exception) { "" }
             if (n.length >= 3) mapa.putIfAbsent(n, ai.packageName)
         }
@@ -162,8 +184,8 @@ object Analizador {
      * estaba abierta hace un momento y además tiene varias señales feas.
      */
     fun culpable(lista: List<AppRevisada>): AppRevisada? =
-        lista.firstOrNull { it.abiertaRecien && it.puntos >= 7 }
-            ?: lista.firstOrNull { it.puntos >= 11 }
+        lista.firstOrNull { it.abiertaRecien && it.puntos >= 7 && !it.conocida }
+            ?: lista.firstOrNull { it.puntos >= 11 && !it.conocida }
 
     /** Revisa una sola app (se usa cuando se instala algo nuevo). */
     fun evaluarUna(c: Context, paquete: String): AppRevisada? {
@@ -173,7 +195,27 @@ object Analizador {
 
     fun estaInstalada(c: Context, paquete: String) = infoPaquete(c.packageManager, paquete) != null
 
-    fun vinoDeTienda(c: Context, paquete: String) = instalador(c.packageManager, paquete) in TIENDAS
+    fun vinoDeTienda(c: Context, paquete: String) = origen(c.packageManager, paquete) == Origen.TIENDA
+
+    /** De dónde vino la app: tienda, de fábrica, APK a mano o la instaló otra app. */
+    @Suppress("DEPRECATION")
+    private fun origen(pm: PackageManager, paquete: String): Origen {
+        val fuentes = try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                val i = pm.getInstallSourceInfo(paquete)
+                listOf(i.installingPackageName, i.initiatingPackageName, i.originatingPackageName)
+            } else listOf(pm.getInstallerPackageName(paquete))
+        } catch (e: Exception) { emptyList() }
+        val conocidas = fuentes.filterNotNull().filter { it.isNotBlank() && it != "android" }
+        return when {
+            conocidas.any { it in TIENDAS } -> Origen.TIENDA
+            conocidas.isEmpty() -> Origen.PREINSTALADA          // de fábrica o cargada por la empresa
+            conocidas.all { it in INSTALADORES_MANUALES } -> Origen.MANUAL
+            else -> Origen.OTRA_APP
+        }
+    }
+
+    fun esConocida(paquete: String) = CONOCIDAS.any { paquete.startsWith(it) }
 
     @Suppress("DEPRECATION")
     fun paquetesDeUsuario(pm: PackageManager): List<PackageInfo> =
@@ -193,9 +235,13 @@ object Analizador {
         val pm = c.packageManager
         val paquete = pi.packageName
         val ai = pi.applicationInfo ?: return null
-        val desdeTienda = instalador(pm, paquete) in TIENDAS
+        val org = origen(pm, paquete)
+        val desdeTienda = org == Origen.TIENDA
 
-        if (desdeTienda && CONOCIDAS.any { paquete.startsWith(it) }) return null
+        // Apps conocidas (Facebook, WhatsApp, Mercado Pago…): se ignoran si vinieron de la tienda
+        // o vienen de fábrica. Solo se revisan si alguien las instaló con un APK suelto.
+        if (esConocida(paquete) && paquete !in Config.VIRUS_CONOCIDOS && org != Origen.MANUAL &&
+            org != Origen.OTRA_APP) return null
 
         val nombre = try { ai.loadLabel(pm).toString() } catch (e: Exception) { paquete }
         // Se piden también las pantallas y servicios, para ver qué trae "adentro"
@@ -212,7 +258,11 @@ object Analizador {
 
         // ── Señales fuertes ──
         if (paquete in Config.VIRUS_CONOCIDOS) suma(10, "Está en la lista de virus conocidos de ${Config.NEGOCIO}")
-        if (!desdeTienda) suma(3, "No se descargó de la tienda oficial (Play Store)")
+        when (org) {
+            Origen.MANUAL, Origen.OTRA_APP -> suma(3, "No se descargó de la tienda oficial (Play Store)")
+            Origen.PREINSTALADA -> suma(1, "No figura de dónde se instaló (puede venir de fábrica)")
+            Origen.TIENDA -> {}
+        }
         if (pm.getLaunchIntentForPackage(paquete) == null) suma(3, "Está escondida: no tiene ícono en el menú")
         if (paquete in admins) suma(3, "Se puso como administradora del celular para que no la puedan borrar")
         if (paquete in accesibilidad) suma(3, "Tiene permiso para controlar la pantalla")
@@ -244,7 +294,7 @@ object Analizador {
 
         if (System.currentTimeMillis() - pi.firstInstallTime < 7L * 24 * 60 * 60 * 1000) suma(1, "Se instaló hace pocos días")
         // ── Gemelos truchos: copia de una app conocida, bajada de afuera de la tienda ──
-        if (!desdeTienda) {
+        if (org == Origen.MANUAL || org == Origen.OTRA_APP) {
             val limpio = normalizarNombre(nombre)
             val original = originales[limpio]
             val famosa = imitaA(limpio, paquete)
@@ -260,7 +310,7 @@ object Analizador {
         if (reciente) suma(4, "Estaba abierta hace un momento")
 
         val icono = try { ai.loadIcon(pm) } catch (e: Exception) { null }
-        return AppRevisada(paquete, nombre, icono, puntos, motivos, paquete in admins, reciente)
+        return AppRevisada(paquete, nombre, icono, puntos, motivos, paquete in admins, reciente, esConocida(paquete))
     }
 
     @Suppress("DEPRECATION")
