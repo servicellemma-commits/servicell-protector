@@ -64,8 +64,16 @@ CONOCIDAS = ["com.whatsapp", "com.facebook", "com.instagram", "com.mercadopago",
              "com.google.", "com.android.", "com.samsung.", "com.sec.", "com.motorola.", "com.miui.",
              "com.xiaomi.", "com.huawei.", "com.spotify.", "com.netflix.", "org.telegram.",
              "com.microsoft.", "com.brubank", "com.naranjax", "ar.com.", PAQUETE_APP]
-TIENDAS = ["com.android.vending", "com.sec.android.app.samsungapps", "com.huawei.appmarket",
-           "com.xiaomi.market", "com.amazon.venezia"]
+TIENDAS = ["com.android.vending", "com.google.android.feedback", "com.sec.android.app.samsungapps",
+           "com.huawei.appmarket", "com.xiaomi.market", "com.xiaomi.mipicks", "com.xiaomi.discover",
+           "com.heytap.market", "com.oppo.market", "com.vivo.appstore", "com.amazon.venezia",
+           # Restauración al cambiar de celular
+           "com.sec.android.easyMover", "com.google.android.apps.restore", "com.motorola.migrate",
+           "com.miui.backup", "com.coloros.backuprestore",
+           # Instaladores oficiales de Facebook (de fábrica)
+           "com.facebook.system", "com.facebook.appmanager"]
+INSTALADORES_MANUALES = ["com.google.android.packageinstaller", "com.android.packageinstaller",
+                         "com.samsung.android.packageinstaller", "com.miui.packageinstaller"]
 
 # Permisos peligrosos → (puntos, motivo)
 PERMISOS = {
@@ -119,6 +127,7 @@ class App:
         self.puntos = 0
         self.motivos = []
         self.admin = False
+        self.conocida = any(paquete.startswith(c) for c in CONOCIDAS)
 
     @property
     def nivel(self):
@@ -180,13 +189,20 @@ class Analizador:
         if not ok or not dump:
             return None
 
-        instalador = ""
-        m = re.search(r"installerPackageName=(\S+)", dump)
-        if m:
-            instalador = m.group(1)
-        desde_tienda = instalador in TIENDAS
+        fuentes = re.findall(r"install(?:er|InitiatingPackage|OriginatingPackage)(?:PackageName|Name)?=(\S+)", dump)
+        fuentes = [f for f in fuentes if f not in ("null", "android", "")]
+        if any(f in TIENDAS for f in fuentes):
+            origen = "tienda"
+        elif not fuentes:
+            origen = "preinstalada"
+        elif all(f in INSTALADORES_MANUALES for f in fuentes):
+            origen = "manual"
+        else:
+            origen = "otra_app"
+        desde_tienda = origen == "tienda"
 
-        if desde_tienda and any(paquete.startswith(c) for c in CONOCIDAS):
+        # Apps conocidas (Facebook, WhatsApp…): solo se revisan si alguien las instaló con un APK suelto
+        if any(paquete.startswith(c) for c in CONOCIDAS) and origen in ("tienda", "preinstalada"):
             return None
 
         app = App(paquete)
@@ -201,8 +217,10 @@ class Analizador:
             app.puntos += p
             app.motivos.append(motivo)
 
-        if not desde_tienda:
+        if origen in ("manual", "otra_app"):
             suma(3, "No se instaló desde la tienda oficial (Play Store)")
+        elif origen == "preinstalada":
+            suma(1, "No figura de dónde se instaló (puede venir de fábrica)")
         if "HAS CODE" in dump and re.search(r"hiddenUntilInstalled", dump):
             pass
         if app.admin:
@@ -361,7 +379,8 @@ class Ventana(tk.Tk):
         top = tk.Frame(card, bg=TARJETA)
         top.pack(fill="x", padx=14, pady=(12, 4))
 
-        var = tk.BooleanVar(value=(app.nivel == "peligrosa"))
+        # Las apps de marcas conocidas nunca vienen tildadas: puede ser la original
+        var = tk.BooleanVar(value=(app.nivel == "peligrosa" and not app.conocida))
         self.vars[app.paquete] = var
         tk.Checkbutton(top, variable=var, bg=TARJETA, activebackground=TARJETA,
                        selectcolor=TARJETA).pack(side="left")
@@ -376,6 +395,9 @@ class Ventana(tk.Tk):
         motivos = "\n".join("•  " + m for m in app.motivos)
         tk.Label(card, text=motivos, bg=TARJETA, fg="#D0D0D0", font=("Segoe UI", 10),
                  justify="left", anchor="w").pack(anchor="w", padx=40, pady=(2, 12))
+        if app.conocida:
+            tk.Label(card, text="⚠️ Es una app conocida: puede ser la original. Confirmá con el cliente antes de borrarla.",
+                     bg=TARJETA, fg=AMARILLO, font=("Segoe UI", 9)).pack(anchor="w", padx=40, pady=(0, 10))
         if app.admin:
             tk.Label(card, text="⚠️ Es administradora: puede pedir un toque en el celular para soltarse.",
                      bg=TARJETA, fg=AMARILLO, font=("Segoe UI", 9)).pack(anchor="w", padx=40, pady=(0, 10))
