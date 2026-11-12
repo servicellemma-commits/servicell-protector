@@ -206,6 +206,7 @@ class MainActivity : Activity() {
             Acceso("📋", "Apps que borré") { startActivity(Intent(this, HistorialActivity::class.java)) },
             Acceso("😵", "No puedo usar el celular") { Ayuda.mostrarModoSeguro(this) },
             Acceso("⚡", "Atajos de emergencia") { startActivity(Intent(this, AtajoActivity::class.java)) },
+            Acceso("🔔", "Avisos raros de páginas web") { startActivity(Intent(this, AvisosWebActivity::class.java)) },
             Acceso("🔒", "Privacidad") { Ayuda.mostrarPrivacidad(this) },
             // Muestra el ícono de Instagram que ya tiene el celular (si no está, un emoji)
             Acceso("📸", "Seguinos en Instagram", iconoDeApp(this, "com.instagram.android", "com.instagram.lite")) {

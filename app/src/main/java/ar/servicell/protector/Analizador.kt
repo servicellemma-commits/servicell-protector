@@ -74,6 +74,18 @@ object Analizador {
         "com.motorola.", "com.miui.", "com.xiaomi.", "com.huawei.", "com.spotify.",
         "com.netflix.", "com.zhiliaoapp.", "com.snapchat.", "org.telegram.",
         "com.microsoft.", "com.ualabee.", "ar.com.", "com.brubank", "com.naranjax",
+        // 🇦🇷 Bancos y billeteras de Argentina
+        "com.mosync.app_Banco_Galicia", "com.galicia", "com.santander", "com.bbva", "com.macro",
+        "ar.macro", "com.icbc", "com.supervielle", "com.hsbc", "com.bancopatagonia", "com.patagonia",
+        "com.bancociudad", "com.bancoprovincia", "com.bna", "com.cuentadni", "com.uala", "ar.uala",
+        "com.playdigital.modo", "com.personalpay", "com.prex", "com.lemoncash", "com.belo",
+        "com.cuentasimple", "com.credicoop", "com.comafi", "com.itau",
+        // 🇦🇷 Apps del Estado (Mi Argentina, AFIP/ARCA, ANSES, SUBE…)
+        "ar.gob.", "ar.gov.", "gob.ar.", "com.afip", "com.anses", "com.sube",
+        // 🇦🇷 Celulares, delivery y viajes
+        "com.personal", "com.telecom", "com.claro", "com.movistar", "com.telefonica",
+        "com.grability.rappi", "com.pedidosya", "com.ubercab", "com.didiglobal", "com.cabify",
+        "com.mercadolibre", "com.tiendanube", "com.despegar",
     )
 
     // Nombres típicos de "limpiadores" y apps engañosas

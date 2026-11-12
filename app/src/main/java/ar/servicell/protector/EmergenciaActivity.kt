@@ -152,6 +152,9 @@ class EmergenciaActivity : Activity() {
                 col.boton("Dar acceso de uso", Colores.AZUL) { Ayuda.abrirPermisoDeUso(this) }
             }
             col.texto("Si la publicidad sigue apareciendo:")
+            col.boton("🔔 ¿Son avisos de una página web?", Colores.AZUL) {
+                startActivity(Intent(this, AvisosWebActivity::class.java))
+            }
             col.boton("🔍 Revisar todo el celular", Colores.AZUL) { completo = true; mostrarTodas(lista) }
             col.botonWhatsApp("Pedir ayuda a ${Config.NEGOCIO}") {
                 Ayuda.pedirAyuda(this, "Me aparece publicidad y la app no encontró al culpable.")
