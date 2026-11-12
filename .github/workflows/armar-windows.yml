@@ -21,8 +21,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar PyInstaller
-        run: pip install pyinstaller
+      - name: Instalar PyInstaller y el lector de apps
+        run: pip install pyinstaller pyaxmlparser
 
       - name: Bajar ADB (herramienta oficial de Google)
         shell: pwsh
@@ -32,11 +32,16 @@ jobs:
 
       - name: Bajar la ultima app Android (para instalarla al cliente)
         shell: pwsh
-        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          try {
-            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/ultima/ServicellProtector.apk" -OutFile pc/ServicellProtector.apk
-          } catch { Write-Host "Todavia no hay APK publicado; el programa pedira elegirlo a mano." }
+          gh release download ultima --repo ${{ github.repository }} --pattern "ServicellProtector.apk" --dir pc --clobber
+          if (-not (Test-Path "pc/ServicellProtector.apk")) { Write-Error "No se pudo bajar la app"; exit 1 }
+
+      - name: Probar que lee el nombre real de una app
+        shell: pwsh
+        run: |
+          python -c "import sys; sys.path.insert(0, 'pc'); import servicell_pc as s; r = s.leer_apk('pc/ServicellProtector.apk'); print('Nombre:', r['nombre']); print('Pantalla principal:', r['principal']); print('Componentes:', len(r['componentes'])); assert r['nombre'] == 'Servicell Protector', r; assert r['principal'], r; assert r['componentes'], r"
 
       - name: Armar el .exe
         working-directory: pc
@@ -45,9 +50,19 @@ jobs:
           $apk = ""
           if (Test-Path "ServicellProtector.apk") { $apk = "--add-data `"ServicellProtector.apk;.`"" }
           $cmd = "pyinstaller --noconfirm --onefile --windowed --name ServicellProtectorPC " +
-                 "--add-data `"platform-tools;platform-tools`" $apk servicell_pc.py"
+                 "--collect-all pyaxmlparser --add-data `"platform-tools;platform-tools`" $apk servicell_pc.py"
           Write-Host $cmd
           Invoke-Expression $cmd
+
+      - name: Probar el .exe armado
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "pc/dist/ServicellProtectorPC.exe" -ArgumentList "--autoprueba", "$PWD\prueba.json" -Wait
+          $r = Get-Content prueba.json | ConvertFrom-Json
+          $r | Format-List
+          if (-not $r.adb_existe) { Write-Error "El programa no encuentra el ADB"; exit 1 }
+          if (-not $r.apk) { Write-Error "El programa no encuentra la app para instalar"; exit 1 }
+          if (-not $r.lector_apps) { Write-Error "Falta el lector de apps"; exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
