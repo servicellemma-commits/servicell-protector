@@ -94,6 +94,17 @@ object Analizador {
         "optimi", "phone master", "phonemaster", "antivirus", "virus", "cache", "battery saver",
         "batterysaver", "ahorro de bater", "speed up", "speedup", "ram ",
     )
+    /**
+     * 🎭 Palabras de "app del sistema". Las apps reales del sistema vienen de fábrica:
+     * si una app con estos nombres se instaló aparte, se está disfrazando.
+     */
+    private val NOMBRES_SISTEMA = setOf(
+        "service", "services", "servicio", "servicios", "system", "sistema", "update", "updates",
+        "updater", "actualizacion", "actualizaciones", "settings", "ajustes", "configuracion",
+        "framework", "android", "google", "security", "seguridad", "package", "installer",
+        "instalador", "process", "proceso", "daemon",
+    )
+
     private val NOMBRES_DEBILES = listOf(
         "bater", "battery", "update", "actualiz", "sistema", "system", "security", "seguridad",
         "wallpaper", "fondo", "linterna", "flashlight", "torch", "qr", "pdf", "weather", "clima",
@@ -318,8 +329,32 @@ object Analizador {
             }
         }
 
+        // ── Disfraces de virus (solo si NO vino de la tienda ni de fábrica) ──
+        val deAfuera = org == Origen.MANUAL || org == Origen.OTRA_APP
+        val escondida = pm.getLaunchIntentForPackage(paquete) == null
+        val palabras = normalizarNombre(nombre).split(" ").filter { it.isNotBlank() }
+        val disfrazada = deAfuera && palabras.isNotEmpty() && palabras.any { it in NOMBRES_SISTEMA }
+        val sinPantallas = deAfuera && detalle.activities.isNullOrEmpty()
+
+        // 1) Nombre de "sistema" en una app que se instaló aparte
+        if (disfrazada) suma(4, "Se disfraza de app del sistema («$nombre»), pero no vino de fábrica ni de la tienda")
+        // 2) No tiene ninguna pantalla: solo trabaja escondida
+        if (sinPantallas) suma(4, "No tiene ninguna pantalla para abrir: solo trabaja escondida")
+
         val reciente = paquete in recientes
         if (reciente) suma(4, "Estaba abierta hace un momento")
+
+        // 3) Combinaciones que, juntas, son de virus: van directo a rojo (peligrosa = 9 puntos)
+        val combinacion = when {
+            deAfuera && disfrazada -> "nombre de sistema y no vino de la tienda"
+            deAfuera && escondida -> "está escondida y no vino de la tienda"
+            deAfuera && sinPantallas -> "no tiene pantallas y no vino de la tienda"
+            else -> null
+        }
+        if (combinacion != null) {
+            motivos += "⚠️ Combinación peligrosa: $combinacion"
+            if (puntos < 9) puntos = 9
+        }
 
         val icono = try { ai.loadIcon(pm) } catch (e: Exception) { null }
         return AppRevisada(paquete, nombre, icono, puntos, motivos, paquete in admins, reciente, esConocida(paquete))
