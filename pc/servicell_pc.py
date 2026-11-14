@@ -59,6 +59,21 @@ REDES_PUBLICIDAD = {
 
 NOMBRES_FUERTES = ["clean", "limpi", "boost", "acelera", "junk", "basura", "cooler", "enfria",
                    "optimi", "master", "antivirus", "virus", "cache", "saver", "speed", "ram"]
+# 🎭 Palabras de "app del sistema": si una app así se instaló aparte, se está disfrazando
+NOMBRES_SISTEMA = {"service", "services", "servicio", "servicios", "system", "sistema", "update", "updates",
+                   "updater", "actualizacion", "actualizaciones", "settings", "ajustes", "configuracion",
+                   "framework", "android", "google", "security", "seguridad", "package", "installer",
+                   "instalador", "process", "proceso", "daemon"}
+
+
+def palabras_de(texto):
+    """Palabras sueltas, en minúscula y sin acentos."""
+    import unicodedata
+    t = unicodedata.normalize("NFD", texto.lower())
+    t = "".join(ch for ch in t if unicodedata.category(ch) != "Mn")
+    return [w for w in re.split(r"[^a-z0-9]+", t) if w]
+
+
 NOMBRES_DEBILES = ["bater", "battery", "update", "actualiz", "sistema", "system", "security",
                    "seguridad", "wallpaper", "fondo", "linterna", "flashlight", "torch", "vpn"]
 
@@ -207,11 +222,15 @@ def leer_apk(ruta):
     except Exception:
         pass
     componentes = []
+    actividades = None
     for metodo in ("get_activities", "get_services", "get_receivers"):
         f = getattr(apk, metodo, None)
         if callable(f):
             try:
-                componentes += [str(x) for x in (f() or [])]
+                lista = [str(x) for x in (f() or [])]
+                componentes += lista
+                if metodo == "get_activities":
+                    actividades = len(lista)
             except Exception:
                 pass
     principal = None
@@ -221,7 +240,7 @@ def leer_apk(ruta):
             principal = f()
         except Exception:
             principal = None
-    return {"nombre": nombre, "componentes": componentes,
+    return {"nombre": nombre, "componentes": componentes, "actividades": actividades,
             "principal": principal, "leyo_manifiesto": bool(componentes)}
 
 
@@ -342,6 +361,32 @@ def puntuar(paquete, bloque, admins, info=None):
     m = re.search(r"targetSdk=(\d+)", bloque)
     if m and int(m.group(1)) <= 27:
         suma(1, "Hecha para un Android viejo (evita controles nuevos)")
+
+    # ── Disfraces de virus (solo si NO vino de la tienda ni de fábrica) ──
+    de_afuera = origen in ("manual", "otra_app")
+    escondida = bool(info and info.get("leyo_manifiesto") and not info.get("principal"))
+    # Con el nombre real se mira el nombre; si no, las partes del nombre técnico (com.file.service)
+    palabras = palabras_de(app.etiqueta) if app.nombre_real else palabras_de(paquete)[1:]
+    disfrazada = de_afuera and any(w in NOMBRES_SISTEMA for w in palabras)
+    sin_pantallas = de_afuera and bool(info) and info.get("actividades") == 0
+
+    if disfrazada:
+        suma(4, f"Se disfraza de app del sistema («{app.etiqueta}»), pero no vino de fábrica ni de la tienda")
+    if sin_pantallas:
+        suma(4, "No tiene ninguna pantalla para abrir: solo trabaja escondida")
+
+    # Combinaciones que, juntas, son de virus: van directo a rojo (peligrosa = 9 puntos)
+    if de_afuera and disfrazada:
+        combinacion = "nombre de sistema y no vino de la tienda"
+    elif de_afuera and escondida:
+        combinacion = "está escondida y no vino de la tienda"
+    elif de_afuera and sin_pantallas:
+        combinacion = "no tiene pantallas y no vino de la tienda"
+    else:
+        combinacion = None
+    if combinacion:
+        app.motivos.append("⚠️ Combinación peligrosa: " + combinacion)
+        app.puntos = max(app.puntos, 9)
     return app
 
 
@@ -353,7 +398,7 @@ class Analizador:
 
     def __init__(self, log):
         self.log = log
-        self.cache = _leer_json("nombres.json", {})   # "paquete:versión" → info
+        self.cache = _leer_json("nombres2.json", {})   # "paquete:versión" → info
 
     def dispositivo(self):
         ok, out = adb("devices")
@@ -418,7 +463,7 @@ class Analizador:
             app = puntuar(a.paquete, bloques[a.paquete], admins, info) or a
             if app.puntos > 0:
                 resultado.append(app)
-        _guardar_json("nombres.json", self.cache)
+        _guardar_json("nombres2.json", self.cache)
 
         resultado.sort(key=lambda a: a.puntos, reverse=True)
         return resultado, len(terceros)
