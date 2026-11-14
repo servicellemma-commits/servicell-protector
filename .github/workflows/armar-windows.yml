@@ -43,6 +43,13 @@ jobs:
         run: |
           python -c "import sys; sys.path.insert(0, 'pc'); import servicell_pc as s; r = s.leer_apk('pc/ServicellProtector.apk'); print('Nombre:', r['nombre']); print('Pantalla principal:', r['principal']); print('Componentes:', len(r['componentes'])); assert r['nombre'] == 'Servicell Protector', r; assert r['principal'], r; assert r['componentes'], r"
 
+      - name: Anotar el número de versión del programa
+        shell: pwsh
+        run: |
+          "${{ github.run_number }}" | Out-File -Encoding ascii -NoNewline pc/build.txt
+          "{`"build`": ${{ github.run_number }}}" | Out-File -Encoding ascii -NoNewline pc/version.json
+          Get-Content pc/version.json
+
       - name: Armar el .exe
         working-directory: pc
         shell: pwsh
@@ -50,7 +57,7 @@ jobs:
           $apk = ""
           if (Test-Path "ServicellProtector.apk") { $apk = "--add-data `"ServicellProtector.apk;.`"" }
           $cmd = "pyinstaller --noconfirm --onefile --windowed --name ServicellProtectorPC " +
-                 "--collect-all pyaxmlparser --add-data `"platform-tools;platform-tools`" $apk servicell_pc.py"
+                 "--collect-all pyaxmlparser --add-data `"build.txt;.`" --add-data `"platform-tools;platform-tools`" $apk servicell_pc.py"
           Write-Host $cmd
           Invoke-Expression $cmd
 
@@ -63,6 +70,8 @@ jobs:
           if (-not $r.adb_existe) { Write-Error "El programa no encuentra el ADB"; exit 1 }
           if (-not $r.apk) { Write-Error "El programa no encuentra la app para instalar"; exit 1 }
           if (-not $r.lector_apps) { Write-Error "Falta el lector de apps"; exit 1 }
+          if (-not $r.build -or $r.build -lt 1) { Write-Error "Falta el número de versión del programa"; exit 1 }
+          if (-not $r.version_app) { Write-Error "No pudo leer la versión de la app del celular"; exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -75,4 +84,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete pc --yes --cleanup-tag 2>$null
-          gh release create pc pc/dist/ServicellProtectorPC.exe --title "Programa para Windows" --notes "Herramienta del tecnico: limpia el celular por cable e instala la app."
+          gh release create pc pc/dist/ServicellProtectorPC.exe pc/version.json --title "Programa para Windows" --notes "Herramienta del tecnico: limpia el celular por cable e instala la app."

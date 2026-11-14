@@ -29,6 +29,7 @@ import datetime
 import json
 import tempfile
 import webbrowser
+import urllib.request
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -136,13 +137,142 @@ def ruta_adb():
     return "adb"
 
 
+REPO = "servicellemma-commits/servicell-protector"
+_versiones = {}
+
+
+def version_apk(ruta):
+    """(número de versión, nombre de versión) de un archivo de la app. Ej: (16, "2.5")."""
+    try:
+        clave = (ruta, os.path.getmtime(ruta))
+        if clave not in _versiones:
+            from pyaxmlparser import APK
+            a = APK(ruta)
+            _versiones[clave] = (int(a.version_code or 0), str(a.version_name or ""))
+        return _versiones[clave]
+    except Exception:
+        return (0, "")
+
+
+def ruta_apk_descargada():
+    return os.path.join(carpeta_datos(), "app_celular", "ServicellProtector.apk")
+
+
 def ruta_apk():
+    """La versión más nueva de la app del celular que tenga el programa:
+    la que vino adentro del programa o la que bajó solo de GitHub."""
+    candidatas = []
     for base in _carpetas_base():
         for nombre in ("ServicellProtector.apk", os.path.join("apk", "ServicellProtector.apk")):
             p = os.path.join(base, nombre)
             if os.path.exists(p):
-                return p
+                candidatas.append(p)
+    if os.path.exists(ruta_apk_descargada()):
+        candidatas.append(ruta_apk_descargada())
+    if not candidatas:
+        return None
+    return max(candidatas, key=lambda p: version_apk(p)[0])
+
+
+def build_local():
+    """Número de armado de este programa (lo escribe GitHub al armarlo)."""
+    for base in _carpetas_base():
+        p = os.path.join(base, "build.txt")
+        try:
+            with open(p, encoding="utf-8-sig") as f:
+                return int(f.read().strip())
+        except Exception:
+            pass
+    return 0
+
+
+# ───────── Actualizaciones automáticas desde tu GitHub ─────────
+def _pedir(url, timeout=25):
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                               "User-Agent": "ServicellProtectorPC"})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _api(url):
+    with _pedir(url) as r:
+        return json.load(r)
+
+
+def _bajar(url, destino):
+    """Baja un archivo a un temporal y recién al final lo pone en su lugar."""
+    parte = destino + ".parte"
+    with _pedir(url, timeout=120) as r, open(parte, "wb") as f:
+        while True:
+            bloque = r.read(256 * 1024)
+            if not bloque:
+                break
+            f.write(bloque)
+    os.replace(parte, destino)
+
+
+def actualizar_app_celular():
+    """Si en GitHub hay una app del celular nueva, la baja. Devuelve su versión o None."""
+    rel = _api(f"https://api.github.com/repos/{REPO}/releases/tags/ultima")
+    asset = next((a for a in rel.get("assets", []) if a.get("name", "").endswith(".apk")), None)
+    if not asset:
+        return None
+    estado = _leer_json("actualizaciones.json", {})
+    destino = ruta_apk_descargada()
+    if estado.get("apk_id") == asset["id"] and os.path.exists(destino):
+        return None
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    _bajar(asset["browser_download_url"], destino)
+    estado["apk_id"] = asset["id"]
+    _guardar_json("actualizaciones.json", estado)
+    return version_apk(destino)[1] or "nueva"
+
+
+def programa_nuevo():
+    """Si hay un programa de Windows más nuevo, devuelve (número, link del .exe)."""
+    local = build_local()
+    if local <= 0:
+        return None
+    rel = _api(f"https://api.github.com/repos/{REPO}/releases/tags/pc")
+    assets = {a.get("name"): a for a in rel.get("assets", [])}
+    if "version.json" not in assets or "ServicellProtectorPC.exe" not in assets:
+        return None
+    with _pedir(assets["version.json"]["browser_download_url"]) as r:
+        remoto = int(json.load(r).get("build", 0))
+    if remoto > local:
+        return remoto, assets["ServicellProtectorPC.exe"]["browser_download_url"]
     return None
+
+
+def reemplazar_programa(url):
+    """Baja el programa nuevo al lado del actual y deja listo el cambio para cuando se cierre."""
+    actual = sys.executable
+    carpeta = os.path.dirname(actual)
+    nuevo = os.path.join(carpeta, "ServicellProtectorPC_nuevo.exe")
+    _bajar(url, nuevo)
+    bat = os.path.join(tempfile.gettempdir(), "servicell_actualizar.bat")
+    contenido = (
+        "@echo off\r\n"
+        "set /a n=0\r\n"
+        ":esperar\r\n"
+        "timeout /t 1 /nobreak >nul\r\n"
+        f'move /y "{nuevo}" "{actual}" >nul 2>&1\r\n'
+        "if errorlevel 1 (\r\n"
+        "  set /a n+=1\r\n"
+        "  if %n% lss 30 goto esperar\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        f'start "" "{actual}"\r\n'
+        'del "%~f0"\r\n'
+    )
+    try:
+        datos = contenido.encode("mbcs")
+    except Exception:
+        datos = contenido.encode("utf-8", "replace")
+    with open(bat, "wb") as f:
+        f.write(datos)
+    subprocess.Popen(["cmd", "/c", bat], close_fds=True,
+                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) |
+                     getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
 ADB = ruta_adb()
@@ -534,7 +664,8 @@ def marcas_conectadas():
 class Ventana(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(f"Servicell Protector PC — {NEGOCIO}")
+        b = build_local()
+        self.title(f"Servicell Protector PC — {NEGOCIO}" + (f"   (versión {b})" if b else ""))
         self.geometry("1080x700")
         self.configure(bg=FONDO)
         self.minsize(940, 600)
@@ -542,8 +673,10 @@ class Ventana(tk.Tk):
         self.vars = {}
         self.total = 0
         self.analizador = Analizador(self.estado)
+        self._ultimo_disp = None
         self._ui()
         self.refrescar_dispositivo()
+        self.after(1500, self.buscar_actualizaciones)
 
     # ───────── Construcción de la interfaz ─────────
     def _ui(self):
@@ -570,6 +703,13 @@ class Ventana(tk.Tk):
         self.btn_informe.pack(side="left", padx=8)
         self.btn_lista = self._boton(barra, "🦠  Mi lista de virus", "#6A1B9A", self.ver_lista)
         self.btn_lista.pack(side="left", padx=8)
+
+        # Aviso de la versión de Servicell Protector en el celular conectado
+        self.aviso = tk.Frame(self, bg=FONDO)
+        self.aviso.pack(fill="x", padx=16)
+        self.lbl_aviso = tk.Label(self.aviso, text="", bg=FONDO, fg=TEXTO, font=("Segoe UI", 11, "bold"))
+        self.lbl_aviso.pack(side="left", pady=(0, 6))
+        self.btn_aviso = self._boton(self.aviso, "", VERDE, self.instalar)
 
         self.resumen = tk.Label(self, text="", bg=FONDO, fg=TEXTO, font=("Segoe UI", 12, "bold"))
         self.resumen.pack(anchor="w", padx=18)
@@ -610,7 +750,13 @@ class Ventana(tk.Tk):
                 modelo = self.analizador.modelo()
                 self.lbl_disp.after(0, lambda: self.lbl_disp.config(
                     text="✅ " + modelo, fg=VERDE_CLARO))
+                if d != self._ultimo_disp:
+                    self._ultimo_disp = d
+                    self.revisar_version_celular()
             else:
+                if self._ultimo_disp is not None:
+                    self._ultimo_disp = None
+                    self.after(0, lambda: self._mostrar_aviso("", None))
                 self.lbl_disp.after(0, lambda: self.lbl_disp.config(
                     text="❌ Sin celular. Conectá el cable y activá «Depuración USB».", fg=GRIS))
             self.after(2500, self.refrescar_dispositivo)
@@ -693,6 +839,86 @@ class Ventana(tk.Tk):
         if app.admin:
             tk.Label(card, text="⚠️ Es administradora: puede pedir un toque en el celular para soltarse.",
                      bg=TARJETA, fg=AMARILLO, font=("Segoe UI", 9)).pack(anchor="w", padx=40, pady=(0, 10))
+
+    # ───────── Versiones y actualizaciones ─────────
+    def _mostrar_aviso(self, texto, boton, color=TEXTO):
+        self.lbl_aviso.config(text=texto, fg=color)
+        if boton:
+            self.btn_aviso.config(text=boton)
+            self.btn_aviso.pack(side="left", padx=12, pady=(0, 6))
+        else:
+            self.btn_aviso.pack_forget()
+
+    def revisar_version_celular(self):
+        """Compara la app del celular conectado con la más nueva que tiene el programa."""
+        apk = ruta_apk()
+        _, nueva = version_apk(apk) if apk else (0, "")
+        codigo_nuevo = version_apk(apk)[0] if apk else 0
+        ok, dump = adb("shell", "dumpsys", "package", PAQUETE_APP)
+        m_cod = re.search(r"versionCode=(\d+)", dump or "") if ok else None
+        m_nom = re.search(r"versionName=(\S+)", dump or "") if ok else None
+        if not m_cod:
+            texto, boton, color = (f"📱 Este celular no tiene Servicell Protector"
+                                   + (f" (para instalar: versión {nueva})" if nueva else ""),
+                                   "📲 Instalar" if apk else None, TEXTO)
+        elif codigo_nuevo and int(m_cod.group(1)) < codigo_nuevo:
+            actual = m_nom.group(1) if m_nom else m_cod.group(1)
+            texto, boton, color = (f"📱 Este celular tiene Servicell Protector {actual}  →  hay una nueva: {nueva}",
+                                   "🔄 Actualizar", AMARILLO)
+        else:
+            actual = m_nom.group(1) if m_nom else ""
+            texto, boton, color = (f"✅ Este celular ya tiene la última versión de Servicell Protector ({actual})",
+                                   None, VERDE_CLARO)
+        self.after(0, lambda: self._mostrar_aviso(texto, boton, color))
+
+    def buscar_actualizaciones(self):
+        """Al abrir: baja la app del celular nueva (si hay) y se fija si hay programa nuevo."""
+        def tarea():
+            try:
+                self.estado("Buscando actualizaciones…")
+                nueva = actualizar_app_celular()
+                if nueva:
+                    self.estado(f"📲 Bajé la app del celular nueva (versión {nueva}). "
+                                "Ya se la podés instalar o actualizar a los clientes.")
+                    if self._ultimo_disp:
+                        self.revisar_version_celular()
+                else:
+                    apk = ruta_apk()
+                    v = version_apk(apk)[1] if apk else ""
+                    self.estado("✅ Tenés la última app del celular" + (f" (versión {v})." if v else "."))
+            except Exception:
+                self.estado("Sin internet: uso la versión de la app que ya tengo.")
+                return
+            if not getattr(sys, "frozen", False) or os.name != "nt":
+                return
+            try:
+                hay = programa_nuevo()
+            except Exception:
+                return
+            if hay:
+                self.after(0, lambda: self._preguntar_actualizar_programa(*hay))
+        threading.Thread(target=tarea, daemon=True).start()
+
+    def _preguntar_actualizar_programa(self, numero, url):
+        if not messagebox.askyesno(
+                "Programa nuevo",
+                f"Hay una versión nueva del programa (versión {numero}).\n\n"
+                "¿La bajo y la instalo ahora? El programa se va a cerrar y volver a abrir solo."):
+            return
+        self.estado("Bajando el programa nuevo…")
+
+        def tarea():
+            try:
+                reemplazar_programa(url)
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "No se pudo actualizar",
+                    "No pude bajar o guardar el programa nuevo.\n\n"
+                    "Probá guardando el programa en el Escritorio o en Descargas, y abrilo de nuevo.\n\n"
+                    f"Detalle: {e}"))
+                return
+            self.after(0, lambda: (self.destroy(), os._exit(0)))
+        threading.Thread(target=tarea, daemon=True).start()
 
     # ───────── Mi lista de virus ─────────
     def alternar_virus(self, app, boton):
@@ -838,8 +1064,11 @@ class Ventana(tk.Tk):
             messagebox.showwarning("Sin celular", "Conectá el celular y autorizá la depuración.")
             return
 
+        ok0, d0 = adb("shell", "pm", "list", "packages", PAQUETE_APP)
+        ya_tenia = ok0 and f"package:{PAQUETE_APP}" in d0
+
         def tarea():
-            self.estado("Instalando Servicell Protector…")
+            self.estado("Actualizando Servicell Protector…" if ya_tenia else "Instalando Servicell Protector…")
             ok, out = adb("install", "-r", "-g", apk, timeout=180)
             if not (ok and "Success" in out):
                 ok, out = adb("install", "-r", apk, timeout=180)
@@ -848,12 +1077,17 @@ class Ventana(tk.Tk):
                 return
             self.estado("Dándole los permisos…")
             self._configurar_permisos()
-            self.after(0, lambda: messagebox.showinfo(
-                "¡Instalada!",
-                "✅ Servicell Protector quedó instalada y con los permisos puestos.\n\n"
-                "Ahora, en el celular, abrí la app y escribí el código de activación "
-                "con el plan que el cliente haya elegido."))
+            v = version_apk(apk)[1]
+            if ya_tenia:
+                msg = (f"✅ Servicell Protector quedó actualizada" + (f" a la versión {v}" if v else "") +
+                       ".\n\nSigue activada: el cliente no tiene que hacer nada.")
+            else:
+                msg = ("✅ Servicell Protector quedó instalada y con los permisos puestos.\n\n"
+                       "Ahora, en el celular, abrí la app y escribí el código de activación "
+                       "con el plan que el cliente haya elegido.")
+            self.after(0, lambda: messagebox.showinfo("¡Listo!", msg))
             self.estado("App instalada y configurada.")
+            self.revisar_version_celular()
         threading.Thread(target=tarea, daemon=True).start()
 
     def _configurar_permisos(self):
@@ -901,7 +1135,9 @@ class Ventana(tk.Tk):
 
 def _autoprueba(salida):
     """Usado al armar el programa en GitHub: confirma que encuentra lo que trae adentro."""
-    r = {"adb": ADB, "adb_existe": os.path.exists(ADB), "apk": ruta_apk(), "lector_apps": False}
+    apk = ruta_apk()
+    r = {"adb": ADB, "adb_existe": os.path.exists(ADB), "apk": apk, "lector_apps": False,
+         "build": build_local(), "version_app": version_apk(apk)[1] if apk else ""}
     try:
         import pyaxmlparser  # noqa: F401
         r["lector_apps"] = True

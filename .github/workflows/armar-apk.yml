@@ -3,6 +3,10 @@ name: Armar APK
 on:
   push:
     branches: [main]
+    # Los cambios del programa de Windows no vuelven a armar la app del celular
+    paths-ignore:
+      - 'pc/**'
+      - '.github/workflows/armar-windows.yml'
   workflow_dispatch:
 
 permissions:
