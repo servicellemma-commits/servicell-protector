@@ -32,6 +32,20 @@
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         tools:targetApi="34">
 
+        <!-- Se abre sola al tocar el link de activación (servicell://activar/...) -->
+        <activity
+            android:name=".ActivarActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="servicell" android:host="activar" />
+            </intent-filter>
+        </activity>
+
         <!-- Presentación con el logo y sonido al abrir la app -->
         <activity
             android:name=".PresentacionActivity"

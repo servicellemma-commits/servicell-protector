@@ -52,7 +52,7 @@ class MainActivity : Activity() {
             }
             renovando -> {
                 col.titulo("🔄 Renovar la protección")
-                col.texto("Pedí tu código nuevo a ${Config.NEGOCIO} y escribilo abajo.")
+                col.texto("Pedí tu link nuevo a ${Config.NEGOCIO} y tocalo cuando te llegue.")
             }
             else -> {
                 col.titulo("🔐 Activar la app")
@@ -70,19 +70,24 @@ class MainActivity : Activity() {
         col.botonWhatsApp(if (renovar) "Renovar con ${Config.NEGOCIO}" else "Mandar mi código a ${Config.NEGOCIO}") {
             Ayuda.mandarCodigo(this, renovar)
         }
-        col.texto("Te respondemos por WhatsApp con tu código de activación.", tam = 17f, color = Colores.GRIS)
+        col.texto("Te respondemos por WhatsApp con un link. Tocalo y la app se activa sola.", tam = 17f, color = Colores.GRIS)
         col.espacio()
-        col.texto("Código de activación (te lo da ${Config.NEGOCIO}):", negrita = true)
-        val campo = campoTexto(col, "XXXX-XXXX-XXXX", mayusculas = true)
+        col.texto("¿El link no abre la app? Copialo y pegalo acá:", negrita = true)
+        val campo = campoTexto(col, "Pegá el link acá", mayusculas = false)
+        // Las activaciones distinguen mayúsculas y minúsculas: el teclado no tiene que cambiar nada.
+        campo.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        campo.textSize = 18f
+        col.boton("📋 Pegar", Colores.AZUL) {
+            val texto = getSystemService(ClipboardManager::class.java).primaryClip
+                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+            if (texto.isNullOrBlank()) Toast.makeText(this, "No hay nada copiado", Toast.LENGTH_SHORT).show()
+            else campo.setText(texto.trim())
+        }
         col.boton("✅ ACTIVAR", Colores.VERDE) {
-            val ingresado = campo.text.toString()
-            val problema = Licencia.problemaCon(this, ingresado)
+            val problema = Licencia.activar(this, campo.text.toString())
             if (problema == null) {
-                Prefs.setActivacion(this, ingresado)
                 renovando = false
-                val e = Licencia.estado(this)
-                val msg = if (e is Licencia.Estado.Hasta) "¡Activada hasta el ${e.vence.format(formatoFecha)}!" else "¡Activada!"
-                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, mensajeActivada(this), Toast.LENGTH_LONG).show()
                 ProteccionService.iniciar(this)
                 mostrar()
             } else {

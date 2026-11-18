@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Activar Servicell Protector</title>
+<style>
+  :root { --fondo:#f4f7fb; --tarjeta:#fff; --texto:#1b2430; --gris:#5b6675; --verde:#1f9d55; --azul:#1f6fd1; }
+  @media (prefers-color-scheme: dark) { :root { --fondo:#11161d; --tarjeta:#1b2330; --texto:#eef2f7; --gris:#a7b1bf; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--fondo); color:var(--texto); font:18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:480px; margin:0 auto; padding:28px 16px; }
+  .tarjeta { background:var(--tarjeta); border-radius:18px; padding:24px 20px; box-shadow:0 4px 18px rgba(0,0,0,.08); text-align:center; }
+  h1 { font-size:26px; margin:6px 0 10px; }
+  p { margin:10px 0; }
+  .boton { display:block; width:100%; border:0; border-radius:14px; padding:18px; margin:14px 0 0; font-size:22px; font-weight:700; color:#fff; text-decoration:none; cursor:pointer; }
+  .verde { background:var(--verde); } .azul { background:var(--azul); font-size:18px; }
+  .chico { color:var(--gris); font-size:15px; }
+  .error { color:#c0392b; font-weight:700; }
+</style>
+</head>
+<body>
+<main>
+  <div class="tarjeta" id="caja">
+    <div style="font-size:54px">🛡️</div>
+    <h1>Activar Servicell Protector</h1>
+    <p>Tocá el botón verde y la app se activa sola.</p>
+    <a class="boton verde" id="activar" href="#">✅ ACTIVAR LA APP</a>
+    <p class="chico" style="margin-top:22px">¿No se abrió la app? Tocá «Copiar», abrí Servicell Protector y tocá «📋 Pegar» y después «ACTIVAR».</p>
+    <button class="boton azul" id="copiar" type="button">📋 Copiar</button>
+    <p class="chico" id="aviso"></p>
+  </div>
+</main>
+<script>
+  (function () {
+    var token = (location.hash || "").replace(/^#/, "");
+    var caja = document.getElementById("caja");
+    if (!/^[A-Za-z0-9_-]{90}$/.test(token)) {
+      caja.innerHTML = '<div style="font-size:54px">🛡️</div><h1>Link incompleto</h1>' +
+        '<p class="error">Este link de activación está cortado o incompleto.</p>' +
+        '<p>Pedí uno nuevo a Servicell-Emma por WhatsApp.</p>';
+      return;
+    }
+    var android = /Android/i.test(navigator.userAgent);
+    document.getElementById("activar").href = android
+      ? "intent://activar/" + token + "#Intent;scheme=servicell;package=ar.servicell.protector;end"
+      : "servicell://activar/" + token;
+    document.getElementById("copiar").onclick = function () {
+      var aviso = document.getElementById("aviso");
+      function listo() { aviso.textContent = "¡Copiado! Ahora abrí la app y tocá «📋 Pegar»."; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(location.href).then(listo, viejo);
+      } else viejo();
+      function viejo() {
+        var t = document.createElement("textarea"); t.value = location.href; document.body.appendChild(t);
+        t.select(); try { document.execCommand("copy"); listo(); } catch (e) { aviso.textContent = "Mantené apretado el link de WhatsApp y elegí «Copiar»."; }
+        document.body.removeChild(t);
+      }
+    };
+  })();
+</script>
+</body>
+</html>

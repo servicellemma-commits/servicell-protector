@@ -3,7 +3,10 @@ package ar.servicell.protector
 import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
+import java.security.KeyFactory
 import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import javax.crypto.Mac
@@ -133,6 +136,7 @@ object Licencia {
 
     /** Qué tipo de código es [ingresado] para este celular (sin mirar la fecha de hoy). */
     private fun leer(c: Context, ingresado: String): Estado {
+        if (ingresado.startsWith(PREFIJO_FIRMADO)) return leerFirmado(c, ingresado.removePrefix(PREFIJO_FIRMADO))
         val n = normalizar(ingresado)
         val cel = codigoCelular(c)
         return when (n.length) {
@@ -149,6 +153,76 @@ object Licencia {
     }
 
     fun estado(c: Context): Estado = leer(c, Prefs.activacion(c))
+
+    // ───────────── 🔗 Activación por link (firma de verdad) ─────────────
+    // El generador firma con una llave PRIVADA que solo tiene Servicell-Emma.
+    // La app tiene solo la llave PÚBLICA: sirve para comprobar la firma, no para fabricar códigos.
+    // Así, aunque alguien desarme la app, no puede sacar activaciones gratis.
+    private const val LLAVE_PUBLICA = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEibvSXl2pxwge4WbTDU3V2Om5TXfN0Gn1Cr6odiTr7U8qzOSLcboXmJ2keWrPprn83AGDDksVv7dBDeXOxfCAGQ=="
+    private const val PREFIJO_FIRMADO = "SP2:"
+    private const val DIAS_PERMANENTE = 0xFFFF
+    private val TOKEN = Regex("(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{90}(?![A-Za-z0-9_-])")
+
+    /** Busca la activación dentro de lo que pegó el cliente (el link entero o solo el código). */
+    fun tokenDeTexto(texto: String): String? = TOKEN.findAll(texto.trim()).map { it.value }.lastOrNull()
+
+    private fun leerFirmado(c: Context, token: String): Estado {
+        val b = try {
+            android.util.Base64.decode(token, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+        } catch (e: Exception) { return Estado.SinActivar }
+        if (b.size != 67 || b[0].toInt() != 2) return Estado.SinActivar
+        val dias = ((b[1].toInt() and 0xFF) shl 8) or (b[2].toInt() and 0xFF)
+        val mensaje = "SP2|${normalizar(codigoCelular(c))}|$dias".toByteArray()
+        if (!firmaValida(mensaje, b.copyOfRange(3, 67))) return Estado.SinActivar
+        if (dias == DIAS_PERMANENTE) return Estado.Permanente
+        val vence = EPOCA.plusDays(dias.toLong())
+        return Estado.Hasta(vence, ChronoUnit.DAYS.between(hoy(c), vence).toInt())
+    }
+
+    private fun firmaValida(mensaje: ByteArray, rs: ByteArray): Boolean = try {
+        val llave = KeyFactory.getInstance("EC").generatePublic(
+            X509EncodedKeySpec(android.util.Base64.decode(LLAVE_PUBLICA, android.util.Base64.DEFAULT))
+        )
+        Signature.getInstance("SHA256withECDSA").run {
+            initVerify(llave); update(mensaje); verify(aDer(rs))
+        }
+    } catch (e: Exception) { false }
+
+    /** La firma viene como r||s (64 bytes); Android la pide en formato DER. */
+    private fun aDer(rs: ByteArray): ByteArray {
+        fun entero(x: ByteArray): ByteArray {
+            var i = 0
+            while (i < x.size - 1 && x[i] == 0.toByte()) i++
+            var v = x.copyOfRange(i, x.size)
+            if (v[0].toInt() and 0x80 != 0) v = byteArrayOf(0) + v
+            return byteArrayOf(0x02, v.size.toByte()) + v
+        }
+        val cuerpo = entero(rs.copyOfRange(0, 32)) + entero(rs.copyOfRange(32, 64))
+        return byteArrayOf(0x30, cuerpo.size.toByte()) + cuerpo
+    }
+
+    /**
+     * Activa con lo que pegó o abrió el cliente. Devuelve null si salió bien,
+     * o el motivo para mostrarle si no.
+     * Los códigos cortos viejos ya no se aceptan para activaciones NUEVAS
+     * (los celulares que ya estaban activados con ellos siguen funcionando).
+     */
+    fun activar(c: Context, texto: String): String? {
+        val token = tokenDeTexto(texto)
+        if (token == null) {
+            val n = normalizar(texto)
+            return if (n.length == 8 || n.length == 12)
+                "Los códigos cortos ya no se usan. Pedile a ${Config.NEGOCIO} tu link de activación."
+            else "No encontré un link de activación. Pegá el link completo que te mandó ${Config.NEGOCIO}."
+        }
+        return when (val e = leerFirmado(c, token)) {
+            is Estado.SinActivar -> "Este link de activación no es para este celular. Pedí uno nuevo a ${Config.NEGOCIO}."
+            is Estado.Hasta -> if (e.dias < 0) "Ese link ya venció. Pedí uno nuevo a ${Config.NEGOCIO}." else {
+                Prefs.setActivacion(c, PREFIJO_FIRMADO + token); null
+            }
+            is Estado.Permanente -> { Prefs.setActivacion(c, PREFIJO_FIRMADO + token); null }
+        }
+    }
 
     /** Activada = permanente, o con fecha y todavía dentro del plazo (+ días de gracia). */
     fun estaActivada(c: Context): Boolean = when (val e = estado(c)) {
